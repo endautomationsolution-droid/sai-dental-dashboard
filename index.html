@@ -128,18 +128,60 @@ const PAY_STATUS = {
 };
 
 const NAV = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "dentist", "receptionist", "staff"] },
-  { id: "patients", label: "Patient Information", icon: Users, roles: ["admin", "dentist", "receptionist"] },
-  { id: "appointments", label: "Appointments", icon: CalendarDays, roles: ["admin", "dentist", "receptionist"] },
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "dentist", "receptionist", "staff", "doctor"] },
+  { id: "patients", label: "Patient Information", icon: Users, roles: ["admin", "dentist", "receptionist", "staff"] },
+  { id: "appointments", label: "Appointments", icon: CalendarDays, roles: ["admin", "dentist", "receptionist", "staff", "doctor"] },
   { id: "billing", label: "Billing & Payments", icon: Receipt, roles: ["admin", "receptionist"] },
   { id: "staff", label: "Staff", icon: UserCog, roles: ["admin"] },
   { id: "attendance", label: "Staff Attendance", icon: ClipboardCheck, roles: ["admin", "staff"] },
-  { id: "leave", label: "Leave Management", icon: CalendarClock, roles: ["admin", "staff"] },
+  { id: "leave", label: "Leave Management", icon: CalendarClock, roles: ["admin", "staff", "doctor"] },
   { id: "inventory", label: "Inventory", icon: Boxes, roles: ["admin"] },
   { id: "reports", label: "Reports", icon: BarChart3, roles: ["admin"] },
-  { id: "notifications", label: "Notifications", icon: Bell, roles: ["admin", "dentist", "receptionist", "staff"] },
-  { id: "settings", label: "Settings", icon: Settings, roles: ["admin", "dentist", "receptionist", "staff"] },
+  { id: "notifications", label: "Notifications", icon: Bell, roles: ["admin", "dentist", "receptionist", "staff", "doctor"] },
+  { id: "settings", label: "Settings", icon: Settings, roles: ["admin", "dentist", "receptionist", "staff", "doctor"] },
 ];
+
+/* =====================================================================
+   REAL BACKEND — Sri Sai Dental n8n Dashboard API
+===================================================================== */
+
+// TODO: replace with your actual n8n Production base URL, e.g.
+// "https://n8n.endat.co.in/webhook"
+const API_BASE = "https://n8n.endat.co.in/webhook";
+
+const REAL_DOCTORS = ["Dr. Savitha", "Dr. Nayana", "Dr. Jyothi", "Dr. Rohit"];
+
+async function apiPost(path, body) {
+  const res = await fetch(`${API_BASE}/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  if (!res.ok) throw new Error(`Request to ${path} failed (${res.status})`);
+  const data = await res.json();
+  return data;
+}
+
+async function apiLogin(pin) {
+  const data = await apiPost("dashboard-login", { pin });
+  // Respond-to-Webhook "All Incoming Items" sometimes wraps in an array
+  return Array.isArray(data) ? data[0] : data;
+}
+
+async function apiGetBookings({ role, doctorName }) {
+  const data = await apiPost("get-bookings", { role, doctorName });
+  return Array.isArray(data) ? data : [];
+}
+
+async function apiGetLeave() {
+  const data = await apiPost("get-leave", {});
+  return Array.isArray(data) ? data : [];
+}
+
+async function apiMarkLeave({ doctorName, date, reason }) {
+  const data = await apiPost("mark-leave", { doctorName, date, reason });
+  return Array.isArray(data) ? data[0] : data;
+}
 
 /* =====================================================================
    SEED DATA
@@ -1513,74 +1555,88 @@ function BillingTab({ patient, updatePatient }) {
    APPOINTMENTS
 ===================================================================== */
 
-function AppointmentsPage({ appointments, setAppointments, patients, date, setDate }) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [filterDoc, setFilterDoc] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
+function AppointmentsPage({ date, setDate, currentUser }) {
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filterDoc, setFilterDoc] = useState(currentUser.role === "doctor" ? currentUser.name : "all");
+  const [view, setView] = useState("day"); // "day" | "upcoming"
 
-  const dayAppts = appointments.filter((a) => a.date === date && (filterDoc === "all" || a.doctorId === filterDoc) && (filterStatus === "all" || a.status === filterStatus)).sort((a, b) => a.time.localeCompare(b.time));
+  const isDoctor = currentUser.role === "doctor";
 
-  function create(a) {
-    setAppointments((prev) => [...prev, { id: uid("apt"), status: "confirmed", payStatus: "pending", ...a }]);
-    setShowCreate(false);
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const rows = await apiGetBookings({
+        role: isDoctor ? "doctor" : "staff",
+        doctorName: isDoctor ? currentUser.name : undefined,
+      });
+      setBookings(rows);
+    } catch (e) {
+      setError("Could not load bookings. Check your connection or try again.");
+    } finally {
+      setLoading(false);
+    }
   }
-  function setStatus(id, status) { setAppointments((prev) => prev.map((a) => a.id === id ? { ...a, status } : a)); }
+
+  useEffect(() => { load(); }, []); // eslint-disable-line
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const filtered = bookings
+    .filter((b) => (isDoctor ? true : (filterDoc === "all" || b.Doctor === filterDoc)))
+    .filter((b) => (view === "day" ? b.Date === date : b.Date >= today))
+    .sort((a, b) => (a.Date + a.Time).localeCompare(b.Date + b.Time));
+
+  const doctorOptions = REAL_DOCTORS;
 
   return (
     <div>
-      <PageHeader title="Appointments" sub="Day view — create, confirm, reschedule, and track visit status"
+      <PageHeader title="Appointments" sub="Live bookings from the WhatsApp booking system"
         action={
           <div className="flex gap-2 items-center flex-wrap">
-            <input type="date" className={inputCls + " w-auto"} value={date} onChange={(e) => setDate(e.target.value)} />
-            <select className={inputCls + " w-auto"} value={filterDoc} onChange={(e) => setFilterDoc(e.target.value)}>
-              <option value="all">All doctors</option>
-              {DOCTORS.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            <select className={inputCls + " w-auto"} value={view} onChange={(e) => setView(e.target.value)}>
+              <option value="day">Specific day</option>
+              <option value="upcoming">All upcoming</option>
             </select>
-            <select className={inputCls + " w-auto"} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-              <option value="all">All statuses</option>
-              {Object.entries(APPT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-            <Button onClick={() => setShowCreate(true)}><Plus size={16} /> New Appointment</Button>
+            {view === "day" && <input type="date" className={inputCls + " w-auto"} value={date} onChange={(e) => setDate(e.target.value)} />}
+            {!isDoctor && (
+              <select className={inputCls + " w-auto"} value={filterDoc} onChange={(e) => setFilterDoc(e.target.value)}>
+                <option value="all">All doctors</option>
+                {doctorOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            )}
+            <Button variant="secondary" onClick={load}>{loading ? "Refreshing…" : "Refresh"}</Button>
           </div>
         } />
+
+      {error && <Card className="mb-4 border-rose-700 bg-rose-950/40 text-rose-300 text-sm">{error}</Card>}
 
       <Card padded={false} className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-sm uppercase text-slate-400 border-b border-slate-700">
-              <th className="px-4 py-3 font-semibold">Time</th><th className="font-semibold">Patient</th><th className="font-semibold">Dentist</th><th className="font-semibold">Treatment</th><th className="font-semibold">Duration</th><th className="font-semibold">Status</th><th className="font-semibold">Payment</th><th className="px-4 font-semibold">Actions</th>
+              <th className="px-4 py-3 font-semibold">Date</th><th className="font-semibold">Time</th><th className="font-semibold">Patient</th><th className="font-semibold">Phone</th><th className="font-semibold">Age</th>{!isDoctor && <th className="font-semibold">Doctor</th>}<th className="font-semibold">Type</th>
             </tr></thead>
             <tbody>
-              {dayAppts.map((a) => {
-                const doc = DOCTORS.find((d) => d.id === a.doctorId);
-                return (
-                  <tr key={a.id} className="border-b border-slate-800">
-                    <td className="px-4 py-3 font-mono font-semibold text-teal-500">{a.time}</td>
-                    <td className="py-3">
-                      <div className="flex items-center gap-2"><Avatar name={a.patientName} size={26} /><span className="font-medium text-slate-100">{a.patientName}</span></div>
-                    </td>
-                    <td className="text-slate-300">{doc.name}</td>
-                    <td className="text-slate-300">{a.treatment}</td>
-                    <td className="text-slate-300">{a.duration}m</td>
-                    <td><StatusBadge status={a.status} map={APPT_STATUS} /></td>
-                    <td><StatusBadge status={a.payStatus} map={PAY_STATUS} /></td>
-                    <td className="px-4">
-                      <div className="flex gap-1">
-                        {a.status !== "completed" && <IconBtn icon={Check} title="Mark completed" onClick={() => setStatus(a.id, "completed")} />}
-                        {a.status !== "cancelled" && <IconBtn icon={XCircle} title="Cancel" tone="danger" onClick={() => setStatus(a.id, "cancelled")} />}
-                        {a.status !== "no_show" && <IconBtn icon={AlertTriangle} title="Mark no-show" onClick={() => setStatus(a.id, "no_show")} />}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!dayAppts.length && <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-400">No appointments match these filters.</td></tr>}
+              {loading && <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">Loading bookings…</td></tr>}
+              {!loading && filtered.map((b, i) => (
+                <tr key={b.SlotID || i} className="border-b border-slate-800">
+                  <td className="px-4 py-3 font-mono text-slate-300">{b.Date}</td>
+                  <td className="font-mono font-semibold text-teal-500">{b.Time}</td>
+                  <td className="py-3"><div className="flex items-center gap-2"><Avatar name={b.PatientName || "?"} size={26} /><span className="font-medium text-slate-100">{b.PatientName || "—"}</span></div></td>
+                  <td className="text-slate-300">{b.PatientPhone || "—"}</td>
+                  <td className="text-slate-300">{b.Age || "—"}</td>
+                  {!isDoctor && <td className="text-slate-300">{b.Doctor}</td>}
+                  <td className="text-slate-300">{b.Type || "—"}</td>
+                </tr>
+              ))}
+              {!loading && !filtered.length && <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">No bookings found for these filters.</td></tr>}
             </tbody>
           </table>
         </div>
       </Card>
-
-      {showCreate && <Modal title="New Appointment" onClose={() => setShowCreate(false)} wide><CreateAppointmentForm patients={patients} appointments={appointments} defaultDate={date} onSubmit={create} /></Modal>}
     </div>
   );
 }
@@ -1888,58 +1944,88 @@ function AttendancePage({ staffLog, setStaffLog, date, setDate }) {
   );
 }
 
-function LeavePage({ leave, setLeave }) {
+function LeavePage({ currentUser }) {
+  const [leave, setLeave] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [showRequest, setShowRequest] = useState(false);
-  function setStatus(id, status) { setLeave((prev) => prev.map((l) => l.id === id ? { ...l, status } : l)); }
-  function addLeave(l) { setLeave((prev) => [{ id: uid("lv"), status: "Pending", ...l }, ...prev]); setShowRequest(false); }
-  const STATUS_COLOR = { Pending: ["#B45309", "#3B2D13"], Approved: ["#15803D", "#12351F"], Rejected: ["#B91C1C", "#3A171B"] };
+  const isDoctor = currentUser.role === "doctor";
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const rows = await apiGetLeave();
+      setLeave(rows);
+    } catch (e) {
+      setError("Could not load leave records. Check your connection or try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []); // eslint-disable-line
+
+  async function addLeave(l) {
+    await apiMarkLeave(l);
+    setShowRequest(false);
+    load();
+  }
+
+  const sorted = [...leave].sort((a, b) => (b.Date || "").localeCompare(a.Date || ""));
+
   return (
     <div>
-      <PageHeader title="Leave Management" sub="Staff leave requests and approvals" action={<Button onClick={() => setShowRequest(true)}><Plus size={16} /> Request Leave</Button>} />
+      <PageHeader title="Leave Management" sub="Doctor / staff leave, pulled from the clinic's Leave sheet"
+        action={<Button onClick={() => setShowRequest(true)}><Plus size={16} /> Mark Leave</Button>} />
+
+      {error && <Card className="mb-4 border-rose-700 bg-rose-950/40 text-rose-300 text-sm">{error}</Card>}
+
       <Card padded={false} className="overflow-hidden">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-sm uppercase text-slate-400 border-b border-slate-700"><th className="px-4 py-3 font-semibold">Employee</th><th className="font-semibold">Type</th><th className="font-semibold">Dates</th><th className="font-semibold">Days</th><th className="font-semibold">Reason</th><th className="font-semibold">Status</th><th className="px-4 font-semibold">Actions</th></tr></thead>
-          <tbody>{leave.map((l) => (
-            <tr key={l.id} className="border-b border-slate-800">
-              <td className="px-4 py-3 font-medium text-slate-100">{l.staffName}</td>
-              <td className="text-slate-300">{l.type}</td>
-              <td className="text-slate-300">{fmtDate(l.start)}{l.start !== l.end ? ` → ${fmtDate(l.end)}` : ""}</td>
-              <td className="text-slate-300">{l.days}</td>
-              <td className="text-slate-300">{l.reason}</td>
-              <td><Badge label={l.status} color={STATUS_COLOR[l.status][0]} bg={STATUS_COLOR[l.status][1]} /></td>
-              <td className="px-4">
-                {l.status === "Pending" && (
-                  <div className="flex gap-1.5">
-                    <Button size="sm" variant="outline" onClick={() => setStatus(l.id, "Approved")}>Approve</Button>
-                    <Button size="sm" variant="danger" onClick={() => setStatus(l.id, "Rejected")}>Reject</Button>
-                  </div>
-                )}
-              </td>
-            </tr>
-          ))}</tbody>
+          <thead><tr className="text-left text-sm uppercase text-slate-400 border-b border-slate-700"><th className="px-4 py-3 font-semibold">Doctor</th><th className="font-semibold">Date</th><th className="font-semibold">Reason</th></tr></thead>
+          <tbody>
+            {loading && <tr><td colSpan={3} className="px-4 py-8 text-center text-sm text-slate-400">Loading leave records…</td></tr>}
+            {!loading && sorted.map((l, i) => (
+              <tr key={i} className="border-b border-slate-800">
+                <td className="px-4 py-3 font-medium text-slate-100">{l.Doctor}</td>
+                <td className="text-slate-300">{fmtDate(l.Date)}</td>
+                <td className="text-slate-300">{l.Reason || "—"}</td>
+              </tr>
+            ))}
+            {!loading && !sorted.length && <tr><td colSpan={3} className="px-4 py-8 text-center text-sm text-slate-400">No leave marked yet.</td></tr>}
+          </tbody>
         </table>
       </Card>
-      {showRequest && <Modal title="Request Leave" onClose={() => setShowRequest(false)}><LeaveRequestForm onSubmit={addLeave} /></Modal>}
+      {showRequest && <Modal title="Mark Leave" onClose={() => setShowRequest(false)}><LeaveRequestForm currentUser={currentUser} onSubmit={addLeave} /></Modal>}
     </div>
   );
 }
 
-function LeaveRequestForm({ onSubmit }) {
-  const [f, setF] = useState({ staffId: STAFF_DIRECTORY[0].id, type: "Casual Leave", start: todayISO(), end: todayISO(), reason: "" });
+function LeaveRequestForm({ currentUser, onSubmit }) {
+  const isDoctor = currentUser.role === "doctor";
+  const [f, setF] = useState({ doctorName: isDoctor ? currentUser.name : REAL_DOCTORS[0], date: todayISO(), reason: "" });
+  const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
   return (
-    <form onSubmit={(e) => { e.preventDefault();
-      const staff = STAFF_DIRECTORY.find((s) => s.id === f.staffId);
-      const days = Math.round((new Date(f.end) - new Date(f.start)) / 86400000) + 1;
-      onSubmit({ ...f, staffName: staff.name, days: Math.max(1, days) }); }}>
-      <Field label="Employee"><select className={inputCls} value={f.staffId} onChange={set("staffId")}>{STAFF_DIRECTORY.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
-      <Field label="Leave type"><select className={inputCls} value={f.type} onChange={set("type")}>{["Casual Leave", "Sick Leave", "Emergency Leave", "Annual Leave", "Other"].map((t) => <option key={t}>{t}</option>)}</select></Field>
-      <div className="grid grid-cols-2 gap-x-4">
-        <Field label="Start date"><input type="date" className={inputCls} value={f.start} onChange={set("start")} required /></Field>
-        <Field label="End date"><input type="date" className={inputCls} value={f.end} onChange={set("end")} required /></Field>
-      </div>
+    <form onSubmit={async (e) => {
+      e.preventDefault();
+      if (!f.date) return;
+      setSaving(true);
+      try { await onSubmit(f); } finally { setSaving(false); }
+    }}>
+      <Field label="Doctor">
+        {isDoctor ? (
+          <input className={inputCls} value={f.doctorName} disabled />
+        ) : (
+          <select className={inputCls} value={f.doctorName} onChange={set("doctorName")}>
+            {REAL_DOCTORS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        )}
+      </Field>
+      <Field label="Date"><input type="date" className={inputCls} value={f.date} onChange={set("date")} required /></Field>
       <Field label="Reason"><textarea className={inputCls} rows={2} value={f.reason} onChange={set("reason")} /></Field>
-      <Button type="submit" className="w-full justify-center mt-1">Submit Request</Button>
+      <Button type="submit" disabled={saving} className="w-full justify-center mt-1">{saving ? "Saving…" : "Mark Leave"}</Button>
     </form>
   );
 }
@@ -2115,10 +2201,10 @@ function NotificationsPage({ notifications, setNotifications }) {
   );
 }
 
-function SettingsPage({ role, setRole }) {
+function SettingsPage({ currentUser, onLogout }) {
   return (
     <div>
-      <PageHeader title="Settings" sub="Clinic preferences and access control" />
+      <PageHeader title="Settings" sub="Clinic preferences and your account" />
       <div className="grid md:grid-cols-2 gap-5">
         <Card>
           <div className="text-sm font-bold text-slate-100 mb-3">Clinic Profile</div>
@@ -2131,23 +2217,70 @@ function SettingsPage({ role, setRole }) {
           </div>
         </Card>
         <Card>
-          <div className="text-sm font-bold text-slate-100 mb-1">Role & Permissions (demo)</div>
-          <div className="text-sm text-slate-400 mb-3">Switch roles to preview role-based sidebar access.</div>
-          <div className="flex flex-col gap-2">
-            {[
-              { id: "admin", label: "Admin", desc: "Full access to every module" },
-              { id: "dentist", label: "Dentist", desc: "Patients, dental records, treatment plans, prescriptions, x-rays, appointments" },
-              { id: "receptionist", label: "Receptionist", desc: "Patients, appointments, billing, payments" },
-              { id: "staff", label: "Staff", desc: "Attendance, leave, assigned modules" },
-            ].map((r) => (
-              <button key={r.id} onClick={() => setRole(r.id)} className={`text-left px-3.5 py-2.5 rounded-lg border ${role === r.id ? "border-teal-600 bg-teal-950" : "border-slate-700 hover:bg-slate-800"}`}>
-                <div className="text-sm font-semibold text-slate-100">{r.label}</div>
-                <div className="text-sm text-slate-400">{r.desc}</div>
-              </button>
-            ))}
+          <div className="text-sm font-bold text-slate-100 mb-1">Your Account</div>
+          <div className="text-sm text-slate-400 mb-3">Logged in via clinic PIN.</div>
+          <div className="flex items-center gap-3 mb-4">
+            <Avatar name={currentUser.name} size={40} />
+            <div>
+              <div className="text-sm font-semibold text-slate-100">{currentUser.name}</div>
+              <div className="text-xs text-slate-400 capitalize">{currentUser.role}{currentUser.doctorId ? ` · ${currentUser.doctorId}` : ""}</div>
+            </div>
           </div>
+          <Button variant="danger" onClick={onLogout}><LogOut size={15} /> Log out</Button>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function LoginScreen({ onLogin }) {
+  const [pin, setPin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!pin.trim()) return;
+    setLoading(true);
+    setError("");
+    try {
+      const result = await apiLogin(pin.trim());
+      if (result && result.success) {
+        onLogin({ name: result.name, role: result.role, doctorId: result.doctorId || "" });
+      } else {
+        setError((result && result.message) || "Invalid PIN. Please try again.");
+      }
+    } catch (e2) {
+      setError("Could not reach the clinic server. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <Card className="w-full max-w-sm">
+        <div className="flex flex-col items-center text-center mb-5">
+          <div className="w-12 h-12 rounded-xl bg-teal-600 flex items-center justify-center mb-3"><Stethoscope size={22} className="text-white" /></div>
+          <div className="text-lg font-bold text-slate-100">Sai Dental Clinic</div>
+          <div className="text-sm text-slate-400">Staff / Doctor Dashboard</div>
+        </div>
+        <form onSubmit={submit}>
+          <Field label="PIN">
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              className={inputCls}
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="Enter your PIN"
+            />
+          </Field>
+          {error && <div className="text-sm text-rose-400 mb-3 -mt-2">{error}</div>}
+          <Button type="submit" disabled={loading} className="w-full justify-center mt-1">{loading ? "Checking…" : "Log in"}</Button>
+        </form>
+      </Card>
     </div>
   );
 }
@@ -2157,23 +2290,22 @@ function SettingsPage({ role, setRole }) {
 ===================================================================== */
 
 async function loadAll() {
-  const [patients, appointments, staffLog, inventory, leave, notifications, role] = await Promise.all([
+  const [patients, appointments, staffLog, inventory, notifications] = await Promise.all([
     loadJSON("sdc:patients:v3", null),
     loadJSON("sdc:appointments:v3", null),
     loadJSON("sdc:staffLog:v3", {}),
     loadJSON("sdc:inventory:v3", null),
-    loadJSON("sdc:leave:v3", null),
     loadJSON("sdc:notifications:v3", null),
-    loadJSON("sdc:role:v3", "admin"),
   ]);
   let pts = patients;
   if (!pts) { pts = attachHistories(seedPatients()); }
   const appts = appointments || seedAppointments(pts);
   const inv = inventory || seedInventory();
-  const lv = leave || seedLeave();
   const notif = notifications || seedNotifications(appts);
-  return { patients: pts, appointments: appts, staffLog, inventory: inv, leave: lv, notifications: notif, role };
+  return { patients: pts, appointments: appts, staffLog, inventory: inv, notifications: notif };
 }
+
+const CURRENT_USER_KEY = "sdc:currentUser:v1";
 
 function App() {
   useFonts();
@@ -2186,18 +2318,38 @@ function App() {
   const [appointments, setAppointments] = useState([]);
   const [staffLog, setStaffLog] = useState({});
   const [inventory, setInventory] = useState([]);
-  const [leave, setLeave] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [role, setRole] = useState("admin");
+
+  const [currentUser, setCurrentUser] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
 
   const [attDate, setAttDate] = useState(todayISO());
   const [apptDate, setApptDate] = useState(todayISO());
+
+  // Restore any previously logged-in user from this browser
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CURRENT_USER_KEY);
+      if (raw) setCurrentUser(JSON.parse(raw));
+    } catch (e) { /* ignore */ }
+    setCheckingSession(false);
+  }, []);
+
+  function handleLogin(user) {
+    setCurrentUser(user);
+    try { window.localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user)); } catch (e) { /* ignore */ }
+  }
+  function handleLogout() {
+    setCurrentUser(null);
+    try { window.localStorage.removeItem(CURRENT_USER_KEY); } catch (e) { /* ignore */ }
+    setPage("dashboard");
+  }
 
   useEffect(() => {
     (async () => {
       const d = await loadAll();
       setPatients(d.patients); setAppointments(d.appointments); setStaffLog(d.staffLog);
-      setInventory(d.inventory); setLeave(d.leave); setNotifications(d.notifications); setRole(d.role);
+      setInventory(d.inventory); setNotifications(d.notifications);
       setLoaded(true);
     })();
   }, []);
@@ -2206,20 +2358,23 @@ function App() {
   useEffect(() => { if (loaded) saveJSON("sdc:appointments:v3", appointments); }, [appointments, loaded]);
   useEffect(() => { if (loaded) saveJSON("sdc:staffLog:v3", staffLog); }, [staffLog, loaded]);
   useEffect(() => { if (loaded) saveJSON("sdc:inventory:v3", inventory); }, [inventory, loaded]);
-  useEffect(() => { if (loaded) saveJSON("sdc:leave:v3", leave); }, [leave, loaded]);
   useEffect(() => { if (loaded) saveJSON("sdc:notifications:v3", notifications); }, [notifications, loaded]);
-  useEffect(() => { if (loaded) saveJSON("sdc:role:v3", role); }, [role, loaded]);
 
   function openProfile(id) { setSelectedPatientId(id); setPage("patients"); }
   function updatePatient(updated) { setPatients((prev) => prev.map((p) => p.id === updated.id ? updated : p)); }
 
+  if (checkingSession || !loaded) {
+    return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-400 text-sm">Loading Sai Dental Clinic dashboard…</div>;
+  }
+
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  const role = currentUser.role;
   const visibleNav = NAV.filter((n) => n.roles.includes(role));
   const unreadCount = notifications.filter((n) => !n.read).length;
   const selectedPatient = patients.find((p) => p.id === selectedPatientId);
-
-  if (!loaded) {
-    return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-400 text-sm">Loading Sai Dental Clinic dashboard…</div>;
-  }
 
   return (
     <div className="min-h-screen bg-slate-950 flex" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -2241,7 +2396,10 @@ function App() {
             </button>
           ))}
         </nav>
-        <div className="px-4 py-4 border-t border-white/10 text-xs text-white/40">Role: <span className="text-white/70 font-semibold capitalize">{role}</span></div>
+        <div className="px-4 py-4 border-t border-white/10 text-xs text-white/40">
+          Logged in as <span className="text-white/70 font-semibold">{currentUser.name}</span>
+          <div className="capitalize">{role}</div>
+        </div>
       </aside>
       {sidebarOpen && <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
@@ -2262,25 +2420,26 @@ function App() {
               {unreadCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />}
             </button>
             <div className="flex items-center gap-2 pl-2 border-l border-slate-700">
-              <Avatar name={role === "admin" ? "Divya Krishnan" : STAFF_DIRECTORY.find(s=>s.role.toLowerCase().includes(role))?.name || "Front Desk"} size={32} />
-              <div className="hidden sm:block text-sm"><div className="font-semibold text-slate-100 capitalize">{role}</div><div className="text-xs text-slate-400">Sai Dental Clinic</div></div>
+              <Avatar name={currentUser.name} size={32} />
+              <div className="hidden sm:block text-sm"><div className="font-semibold text-slate-100">{currentUser.name}</div><div className="text-xs text-slate-400 capitalize">{role}</div></div>
+              <button title="Log out" onClick={handleLogout} className="p-2 rounded-lg hover:bg-slate-800 text-slate-300"><LogOut size={16} /></button>
             </div>
           </div>
         </header>
 
         <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
-          {page === "dashboard" && <Dashboard patients={patients} appointments={appointments} invoices={patients.flatMap(p=>p.invoices)} staffLog={staffLog} leave={leave} inventory={inventory} setPage={setPage} />}
+          {page === "dashboard" && <Dashboard patients={patients} appointments={appointments} invoices={patients.flatMap(p=>p.invoices)} staffLog={staffLog} leave={[]} inventory={inventory} setPage={setPage} />}
           {page === "patients" && !selectedPatient && <PatientsPage patients={patients} setPatients={setPatients} openProfile={openProfile} />}
           {page === "patients" && selectedPatient && <PatientProfile patient={selectedPatient} updatePatient={updatePatient} back={() => setSelectedPatientId(null)} />}
-          {page === "appointments" && <AppointmentsPage appointments={appointments} setAppointments={setAppointments} patients={patients} date={apptDate} setDate={setApptDate} />}
+          {page === "appointments" && <AppointmentsPage date={apptDate} setDate={setApptDate} currentUser={currentUser} />}
           {page === "billing" && <BillingPage patients={patients} />}
           {page === "staff" && <StaffPage />}
           {page === "attendance" && <AttendancePage staffLog={staffLog} setStaffLog={setStaffLog} date={attDate} setDate={setAttDate} />}
-          {page === "leave" && <LeavePage leave={leave} setLeave={setLeave} />}
+          {page === "leave" && <LeavePage currentUser={currentUser} />}
           {page === "inventory" && <InventoryPage inventory={inventory} setInventory={setInventory} />}
           {page === "reports" && <ReportsPage patients={patients} appointments={appointments} />}
           {page === "notifications" && <NotificationsPage notifications={notifications} setNotifications={setNotifications} />}
-          {page === "settings" && <SettingsPage role={role} setRole={setRole} />}
+          {page === "settings" && <SettingsPage currentUser={currentUser} onLogout={handleLogout} />}
         </main>
       </div>
     </div>
@@ -2293,4 +2452,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
-
