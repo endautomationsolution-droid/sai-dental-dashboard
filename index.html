@@ -94,6 +94,9 @@ const STAFF_DIRECTORY = [
   { id: "st_10", empId: "SDC-010", name: "Divya Krishnan", role: "Clinic Manager", dept: "Administration", phone: "99622 10981", email: "divya.k@saidental.clinic", joined: "2018-01-05", shift: "9:00 AM – 6:00 PM", status: "Active" },
 ];
 
+const TREATMENT_OPTIONS = ["Consultation", "Scaling & Cleaning", "Filling", "Root Canal Treatment", "Extraction", "Crown", "Bridge", "Braces Adjustment", "Implant", "Whitening", "X-ray", "Other"];
+const MEDICINE_OPTIONS = ["Amoxicillin 500mg", "Ibuprofen 400mg", "Paracetamol 650mg", "Chlorhexidine Mouthwash", "Metronidazole 400mg", "Other"];
+
 const TOOTH_UPPER = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
 const TOOTH_LOWER = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
 
@@ -419,6 +422,173 @@ async function saveJSON(key, value) {
 }
 
 /* =====================================================================
+   BACKEND API — n8n webhooks (Google Sheets–backed)
+   All four are POST webhooks. Confirmed field contracts:
+
+   sync-patient  POST { name, phone, age }
+     -> { isNew, mrn, name, phone, age, registeredOn? }
+     Dedupes on phone+name; MRN is the patient id (e.g. "SDC-0004").
+
+   get-patients  POST {}  (sheet4 — column headers not yet confirmed;
+     falling back to case-insensitive field lookup below)
+     -> array of patient rows
+
+   add-treatment-plan  POST { mrn, ...planFields }  (sheet2 — column
+     headers not yet confirmed; sending both common casings below)
+     -> created row
+
+   get-treatment-plans  POST { mrn }
+     -> array of plan rows for that MRN, sorted by Date desc,
+        each row has at least { PlanID, MRN, Date, ... }
+===================================================================== */
+
+const API_BASE = "https://n8n.endat.co.in/webhook";
+const API = {
+  syncPatient: `${API_BASE}/sync-patient`,
+  getPatients: `${API_BASE}/get-patients`,
+  addTreatmentPlan: `${API_BASE}/add-treatment-plan`,
+  getTreatmentPlans: `${API_BASE}/get-treatment-plans`,
+};
+
+async function apiPost(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const text = await res.text();
+  let json = {};
+  try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
+  if (!res.ok) throw new Error(json?.message || `Request failed (${res.status})`);
+  return json;
+}
+function asArray(payload, key) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload[key])) return payload[key];
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+// Sheet rows use PascalCase headers (Name, Phone, MRN...) while our own
+// payloads use camelCase — this looks a value up under either casing
+// and a list of likely alternate spellings.
+function pick(obj, ...keys) {
+  if (!obj) return undefined;
+  for (const k of keys) {
+    if (obj[k] != null && obj[k] !== "") return obj[k];
+  }
+  return undefined;
+}
+
+// Age -> approximate DOB (Jan 1 of birth year) so the rest of the UI,
+// which calculates age from dob, still displays correctly. The sheet
+// only stores age, not a real date of birth.
+function ageToApproxDob(age) {
+  const a = Number(age);
+  if (!a || isNaN(a)) return "";
+  const year = new Date().getFullYear() - a;
+  return `${year}-01-01`;
+}
+
+function normalizePatient(p) {
+  const mrn = pick(p, "id", "mrn", "MRN", "patientId");
+  const name = pick(p, "name", "Name") || "";
+  const phone = pick(p, "mobile", "phone", "Phone") || "";
+  const age = pick(p, "age", "Age");
+  const dob = pick(p, "dob", "DOB") || (age ? ageToApproxDob(age) : "");
+  return {
+    id: mrn || uid("PT"),
+    name,
+    dob,
+    gender: pick(p, "gender", "Gender") || "Other",
+    mobile: phone,
+    email: pick(p, "email", "Email") || "",
+    address: pick(p, "address", "Address") || "",
+    emergency: pick(p, "emergency", "Emergency") || "",
+    occupation: pick(p, "occupation", "Occupation") || "",
+    blood: pick(p, "blood", "Blood") || "",
+    allergies: pick(p, "allergies", "Allergies") || "None known",
+    meds: pick(p, "meds", "Meds") || "None",
+    prevTreatment: pick(p, "prevTreatment", "PrevTreatment") || "None prior",
+    insurance: pick(p, "insurance", "Insurance") || "Not insured",
+    dentist: pick(p, "dentist", "Dentist") || DOCTORS[0].name,
+    registered: pick(p, "registered", "registeredOn", "RegisteredOn") || todayISO(),
+    nextAppointment: pick(p, "nextAppointment") || null,
+    dentalChart: p.dentalChart || {},
+    visits: p.visits || [],
+    treatmentPlans: p.treatmentPlans || [],
+    prescriptions: p.prescriptions || [],
+    invoices: p.invoices || [],
+    documents: p.documents || [],
+    status: pick(p, "status", "Status") || "Active",
+  };
+}
+
+function normalizeTreatmentPlan(t) {
+  return {
+    id: pick(t, "id", "planId", "PlanID") || uid("tp"),
+    mrn: pick(t, "mrn", "MRN") || "",
+    date: pick(t, "date", "Date") || todayISO(),
+    dentist: pick(t, "dentist", "Dentist") || "",
+    diagnosis: pick(t, "diagnosis", "Diagnosis") || "",
+    teeth: Array.isArray(t.teeth) ? t.teeth : (typeof pick(t, "teeth", "Teeth") === "string" ? pick(t, "teeth", "Teeth").split(",").map((n) => parseInt(n.trim(), 10)).filter((n) => !isNaN(n)) : []),
+    proposed: pick(t, "proposed", "treatment", "Treatment") || "",
+    priority: pick(t, "priority", "Priority") || "Medium",
+    cost: Number(pick(t, "cost", "Cost")) || 0,
+    visits: Number(pick(t, "visits", "Visits")) || 1,
+    start: pick(t, "start", "Start") || todayISO(),
+    completion: pick(t, "completion", "Completion") || "",
+    status: ["Proposed", "Accepted", "In Progress", "Completed", "Cancelled"].includes(pick(t, "status", "Status")) ? pick(t, "status", "Status") : "Proposed",
+    stages: Array.isArray(t.stages) ? t.stages : (typeof pick(t, "stages", "Stages") === "string" ? pick(t, "stages", "Stages").split(",").map((s) => s.trim()).filter(Boolean) : ["Consultation", "Treatment", "Review"]),
+  };
+}
+
+// sync-patient expects { name, phone, age } and dedupes on phone+name.
+// It returns the MRN (existing or newly minted) — that MRN becomes our
+// patient id going forward.
+async function syncPatient(patient) {
+  const payload = {
+    name: patient.name || "",
+    phone: patient.mobile || patient.phone || "",
+    age: patient.dob ? calcAge(patient.dob) : (patient.age || ""),
+  };
+  const result = await apiPost(API.syncPatient, payload);
+  return normalizePatient({ ...patient, ...result, id: result.mrn, mobile: result.phone || payload.phone, dob: patient.dob || ageToApproxDob(result.age) });
+}
+
+async function fetchPatientsFromServer() {
+  const result = await apiPost(API.getPatients, {});
+  return asArray(result, "patients");
+}
+
+// add-treatment-plan expects { mrn, ...planFields }. Since the exact
+// sheet2 column headers aren't confirmed yet, both camelCase and
+// PascalCase keys are sent so it matches whichever the sheet uses.
+async function addTreatmentPlanApi(patientId, plan) {
+  const teethStr = Array.isArray(plan.teeth) ? plan.teeth.join(", ") : (plan.teeth || "");
+  const stagesStr = Array.isArray(plan.stages) ? plan.stages.join(", ") : (plan.stages || "");
+  const payload = {
+    mrn: patientId, MRN: patientId,
+    date: todayISO(), Date: todayISO(),
+    dentist: plan.dentist, Dentist: plan.dentist,
+    diagnosis: plan.diagnosis, Diagnosis: plan.diagnosis,
+    teeth: teethStr, Teeth: teethStr,
+    treatment: plan.proposed, Treatment: plan.proposed, proposed: plan.proposed,
+    priority: plan.priority, Priority: plan.priority,
+    cost: plan.cost, Cost: plan.cost,
+    visits: plan.visits, Visits: plan.visits,
+    start: plan.start, Start: plan.start,
+    completion: plan.completion, Completion: plan.completion,
+    status: plan.status || "Proposed", Status: plan.status || "Proposed",
+    stages: stagesStr, Stages: stagesStr,
+  };
+  const result = await apiPost(API.addTreatmentPlan, payload);
+  const saved = (result && (result.plan || result.treatmentPlan || result.data)) || result;
+  return normalizeTreatmentPlan({ ...plan, mrn: patientId, ...saved });
+}
+
+async function fetchTreatmentPlansFromServer(patientId) {
+  const result = await apiPost(API.getTreatmentPlans, { mrn: patientId });
+  return asArray(result, "treatmentPlans");
+}
+
+
+/* =====================================================================
    SHARED UI ATOMS
 ===================================================================== */
 
@@ -542,7 +712,7 @@ function Paginated({ rows, pageSize = 8, children }) {
    DASHBOARD
 ===================================================================== */
 
-function Dashboard({ patients, appointments, invoices, staffLog, leave, inventory, setPage }) {
+function Dashboard({ patients, appointments, invoices, staffLog, leave, inventory, setPage, currentUser }) {
   const date = todayISO();
   const yesterday = addDays(date, -1);
   const todays = appointments.filter((a) => a.date === date);
@@ -558,6 +728,24 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
   const revDelta = yRevenue > 0 ? Math.round(((todayRevenue - yRevenue) / yRevenue) * 100) : (todayRevenue > 0 ? 100 : 0);
   const apptDelta = todays.length - yTodays.length;
 
+  // Real, live bookings from the clinic's WhatsApp booking system (Bookings sheet)
+  const isDoctor = currentUser?.role === "doctor";
+  const [realBookings, setRealBookings] = useState([]);
+  const [realLoading, setRealLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const rows = await apiGetBookings({
+          role: isDoctor ? "doctor" : "staff",
+          doctorName: isDoctor ? currentUser.name : undefined,
+        });
+        setRealBookings(rows);
+      } catch (e) { /* ignore, keep list empty */ }
+      finally { setRealLoading(false); }
+    })();
+  }, []); // eslint-disable-line
+  const realTodays = realBookings.filter((b) => b.Date === date).sort((a, b) => (a.Time || "").localeCompare(b.Time || ""));
+
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
@@ -565,7 +753,7 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
   const pendingLeave = (leave || []).filter((l) => l.status === "Pending").length;
 
   const kpis = [
-    { label: "Appointments Today", value: todays.length, icon: CalendarDays, tint: "teal", delta: apptDelta !== 0 ? `${apptDelta > 0 ? "+" : ""}${apptDelta} vs yesterday` : "same as yesterday" },
+    { label: "Appointments Today", value: realTodays.length, icon: CalendarDays, tint: "teal", delta: "from live bookings" },
     { label: "Completed", value: completed, icon: Check, tint: "emerald", delta: `${todays.length ? Math.round((completed / todays.length) * 100) : 0}% of today` },
     { label: "Upcoming", value: upcoming, icon: Clock, tint: "sky", delta: "confirmed + waiting" },
     { label: "Cancelled / No-show", value: cancelled, icon: XCircle, tint: "rose", delta: cancelled ? "review with front desk" : "none today" },
@@ -597,9 +785,9 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
   const returning = patients.filter((p) => p.visits.length > 1).length;
   const activeTx = patients.filter((p) => p.treatmentPlans.some((t) => t.status === "In Progress" || t.status === "Accepted")).length;
 
-  const utilization = DOCTORS.map((d) => {
-    const count = todays.filter((a) => a.doctorId === d.id && a.status !== "cancelled").length;
-    return { ...d, count };
+  const utilization = REAL_DOCTORS.map((name) => {
+    const count = realTodays.filter((b) => b.Doctor === name).length;
+    return { name, count };
   });
   const maxUtil = Math.max(1, ...utilization.map((u) => u.count));
 
@@ -626,7 +814,7 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
           <div>
             <div className="text-teal-100 text-sm font-medium mb-1">{greeting} · {fmtDate(date)}</div>
             <h1 className="text-3xl font-bold text-white leading-tight">Sai Dental Clinic</h1>
-            <div className="text-teal-100 text-sm mt-1">Yelahanka, Bengaluru · {todays.length} appointments scheduled today</div>
+            <div className="text-teal-100 text-sm mt-1">Yelahanka, Bengaluru · {realTodays.length} appointments scheduled today</div>
           </div>
           <div className="flex gap-2 flex-wrap">
             {quickActions.map((q) => (
@@ -678,22 +866,18 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
             <button onClick={() => setPage("appointments")} className="text-sm font-semibold text-teal-500 hover:underline flex items-center gap-1">View all <ChevronRight size={13} /></button>
           </div>
           <div className="flex flex-col divide-y divide-slate-700">
-            {todays.sort((a, b) => a.time.localeCompare(b.time)).map((a) => {
-              const doc = DOCTORS.find((d) => d.id === a.doctorId);
-              const stColor = APPT_STATUS[a.status]?.color || "#64748B";
-              return (
-                <div key={a.id} className="flex items-center gap-3 py-2.5 pl-2.5 border-l-2" style={{ borderColor: stColor }}>
-                  <span className="text-sm w-12 shrink-0 font-mono font-semibold text-teal-500">{a.time}</span>
-                  <Avatar name={doc.name} size={26} color={doc.color} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-slate-100 truncate">{a.patientName}</div>
-                    <div className="text-sm text-slate-400 truncate">{a.treatment} · {doc.name}</div>
-                  </div>
-                  <StatusBadge status={a.status} map={APPT_STATUS} />
+            {realLoading && <div className="text-sm text-slate-500 py-6 text-center">Loading live bookings…</div>}
+            {!realLoading && realTodays.map((b, i) => (
+              <div key={b.SlotID || i} className="flex items-center gap-3 py-2.5 pl-2.5 border-l-2 border-teal-600">
+                <span className="text-sm w-12 shrink-0 font-mono font-semibold text-teal-500">{b.Time}</span>
+                <Avatar name={b.PatientName || "?"} size={26} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-100 truncate">{b.PatientName || "—"}</div>
+                  <div className="text-sm text-slate-400 truncate">{b.Type || "Appointment"} · {b.Doctor}</div>
                 </div>
-              );
-            })}
-            {!todays.length && <div className="text-sm text-slate-500 py-6 text-center">No appointments scheduled for today yet.</div>}
+              </div>
+            ))}
+            {!realLoading && !realTodays.length && <div className="text-sm text-slate-500 py-6 text-center">No appointments scheduled for today yet.</div>}
           </div>
         </Card>
 
@@ -751,13 +935,13 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
           <div className="text-base font-bold text-slate-100 mb-3">Doctor Utilization Today</div>
           <div className="flex flex-col gap-3">
             {utilization.map((u) => (
-              <div key={u.id}>
+              <div key={u.name}>
                 <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-slate-300 flex items-center gap-2"><Avatar name={u.name} size={20} color={u.color} />{u.name.replace("Dr. ", "")}</span>
+                  <span className="text-slate-300 flex items-center gap-2"><Avatar name={u.name} size={20} />{u.name.replace("Dr. ", "")}</span>
                   <span className="font-semibold text-slate-100">{u.count}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${(u.count / maxUtil) * 100}%`, background: u.color }} />
+                  <div className="h-full rounded-full bg-teal-500" style={{ width: `${(u.count / maxUtil) * 100}%` }} />
                 </div>
               </div>
             ))}
@@ -793,22 +977,52 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
 function PatientsPage({ patients, setPatients, openProfile }) {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const filtered = patients.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) || p.mobile.includes(query) || p.id.toLowerCase().includes(query.toLowerCase()));
 
-  function addPatient(data) {
+  async function refreshFromServer() {
+    setRefreshing(true); setError("");
+    try {
+      const list = await fetchPatientsFromServer();
+      if (list.length) setPatients(list.map(normalizePatient));
+    } catch (e) {
+      setError("Could not reach get-patients — showing local data.");
+    } finally { setRefreshing(false); }
+  }
+
+  async function addPatient(data) {
+    const localId = `PT-${1000 + patients.length + 1 + Math.floor(Math.random() * 90)}`;
     const p = {
-      id: `PT-${1000 + patients.length + 1 + Math.floor(Math.random() * 90)}`,
+      id: localId,
       ...data, registered: todayISO(), nextAppointment: null, dentalChart: {}, visits: [], treatmentPlans: [], prescriptions: [], invoices: [], documents: [], status: "Active",
     };
-    setPatients((prev) => [p, ...prev]);
-    setShowAdd(false);
-    openProfile(p.id);
+    setSaving(true); setError("");
+    try {
+      const saved = await syncPatient(p);
+      const finalPatient = normalizePatient({ ...p, ...saved });
+      setPatients((prev) => [finalPatient, ...prev]);
+      setShowAdd(false);
+      openProfile(finalPatient.id);
+    } catch (e) {
+      setError(`Could not save to server (sync-patient): ${e.message}. Saved locally instead.`);
+      setPatients((prev) => [p, ...prev]);
+      setShowAdd(false);
+      openProfile(p.id);
+    } finally { setSaving(false); }
   }
 
   return (
     <div>
-      <PageHeader title="Patients" sub={`${patients.length} patients on file`} action={<Button onClick={() => setShowAdd(true)}><Plus size={16} /> Add New Patient</Button>} />
+      <PageHeader title="Patients" sub={`${patients.length} patients on file`} action={
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={refreshFromServer} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</Button>
+          <Button onClick={() => setShowAdd(true)}><Plus size={16} /> Add New Patient</Button>
+        </div>
+      } />
+      {error && <div className="mb-4 rounded-lg border border-red-800 bg-red-950 px-3.5 py-2.5 text-sm text-red-300">{error}</div>}
       <Card padded={false} className="overflow-hidden">
         <div className="p-4 border-b border-slate-700">
           <div className="max-w-sm"><SearchBox value={query} onChange={setQuery} placeholder="Search by name, ID, or mobile" /></div>
@@ -859,12 +1073,12 @@ function PatientsPage({ patients, setPatients, openProfile }) {
         </div>
       </Card>
 
-      {showAdd && <Modal title="Add New Patient" onClose={() => setShowAdd(false)} wide><AddPatientForm onSubmit={addPatient} /></Modal>}
+      {showAdd && <Modal title="Add New Patient" onClose={() => setShowAdd(false)} wide><AddPatientForm onSubmit={addPatient} saving={saving} /></Modal>}
     </div>
   );
 }
 
-function AddPatientForm({ onSubmit }) {
+function AddPatientForm({ onSubmit, saving }) {
   const [f, setF] = useState({ name: "", dob: "", gender: "Female", mobile: "", email: "", address: "", emergency: "", occupation: "", blood: "O+", allergies: "", meds: "", prevTreatment: "", insurance: "", dentist: DOCTORS[0].name });
   const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
   return (
@@ -895,7 +1109,7 @@ function AddPatientForm({ onSubmit }) {
           <select className={inputCls} value={f.dentist} onChange={set("dentist")}>{DOCTORS.map((d) => <option key={d.id}>{d.name}</option>)}</select>
         </Field>
       </div>
-      <Button type="submit" className="w-full justify-center mt-1">Register Patient</Button>
+      <Button type="submit" disabled={saving} className="w-full justify-center mt-1">{saving ? "Saving…" : "Register Patient"}</Button>
     </form>
   );
 }
@@ -1049,12 +1263,15 @@ function VisitHistoryTab({ patient }) {
 }
 
 function NewVisitForm({ patient, onSubmit }) {
-  const [f, setF] = useState({ date: todayISO(), dentist: patient.dentist, complaint: "", symptoms: "", exam: "", diagnosis: "", teeth: "", treatmentPerformed: "", treatmentRecommended: "", notes: "", followUp: "", amount: "", markPaid: false, setChartCondition: "", rxMeds: "", rxDosage: "", rxFreq: "", rxDuration: "", rxInstructions: "" });
+  const [f, setF] = useState({ date: todayISO(), dentist: patient.dentist, complaint: "", symptoms: "", exam: "", diagnosis: "", teeth: "", treatmentPerformed: TREATMENT_OPTIONS[0], treatmentOther: "", treatmentRecommended: "", notes: "", followUp: "", amount: "", markPaid: false, setChartCondition: "", rxMeds: "", rxMedsOther: "", rxDosage: "", rxFreq: "", rxDuration: "", rxInstructions: "" });
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target?.type === "checkbox" ? e.target.checked : e.target.value }));
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!f.complaint.trim() || !f.treatmentPerformed.trim()) return;
+    <form onSubmit={(e) => { e.preventDefault();
+      const treatmentPerformed = f.treatmentPerformed === "Other" ? f.treatmentOther.trim() : f.treatmentPerformed;
+      const rxMeds = f.rxMeds === "Other" ? f.rxMedsOther.trim() : f.rxMeds;
+      if (!f.complaint.trim() || !treatmentPerformed) return;
       const teeth = f.teeth.split(",").map((t) => parseInt(t.trim(), 10)).filter((n) => !isNaN(n));
-      onSubmit({ ...f, teeth, amount: Number(f.amount) || 0 }); }}>
+      onSubmit({ ...f, treatmentPerformed, rxMeds, teeth, amount: Number(f.amount) || 0 }); }}>
       <div className="grid grid-cols-2 gap-x-4">
         <Field label="Visit date"><input type="date" className={inputCls} value={f.date} onChange={set("date")} required /></Field>
         <Field label="Dentist"><select className={inputCls} value={f.dentist} onChange={set("dentist")}>{DOCTORS.map((d) => <option key={d.id}>{d.name}</option>)}</select></Field>
@@ -1074,7 +1291,12 @@ function NewVisitForm({ patient, onSubmit }) {
           </select>
         </Field>
       </div>
-      <Field label="Treatment performed"><input className={inputCls} value={f.treatmentPerformed} onChange={set("treatmentPerformed")} required /></Field>
+      <Field label="Treatment performed">
+        <select className={inputCls} value={f.treatmentPerformed} onChange={set("treatmentPerformed")} required>
+          {TREATMENT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </Field>
+      {f.treatmentPerformed === "Other" && <Field label="Specify treatment performed"><input className={inputCls} value={f.treatmentOther} onChange={set("treatmentOther")} required /></Field>}
       <Field label="Treatment recommended"><input className={inputCls} value={f.treatmentRecommended} onChange={set("treatmentRecommended")} /></Field>
       <Field label="Notes"><textarea className={inputCls} rows={2} value={f.notes} onChange={set("notes")} /></Field>
       <div className="grid grid-cols-2 gap-x-4">
@@ -1086,11 +1308,17 @@ function NewVisitForm({ patient, onSubmit }) {
       <div className="border-t border-slate-700 pt-4 mt-1">
         <div className="text-sm font-bold text-slate-100 mb-3">Prescription (optional)</div>
         <div className="grid grid-cols-2 gap-x-4">
-          <Field label="Medicine"><input className={inputCls} value={f.rxMeds} onChange={set("rxMeds")} /></Field>
+          <Field label="Medicine">
+            <select className={inputCls} value={f.rxMeds} onChange={set("rxMeds")}>
+              <option value="">No medicine (optional)</option>
+              {MEDICINE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </Field>
           <Field label="Dosage"><input className={inputCls} value={f.rxDosage} onChange={set("rxDosage")} /></Field>
           <Field label="Frequency"><input className={inputCls} value={f.rxFreq} onChange={set("rxFreq")} /></Field>
           <Field label="Duration"><input className={inputCls} value={f.rxDuration} onChange={set("rxDuration")} /></Field>
         </div>
+        {f.rxMeds === "Other" && <Field label="Specify medicine"><input className={inputCls} value={f.rxMedsOther} onChange={set("rxMedsOther")} /></Field>}
         <Field label="Instructions"><input className={inputCls} value={f.rxInstructions} onChange={set("rxInstructions")} /></Field>
       </div>
       <Button type="submit" className="w-full justify-center mt-1">Save Visit</Button>
@@ -1387,9 +1615,44 @@ function ToothIconGlyph({ color = "#111C21" }) {
 }
 function TreatmentPlansTab({ patient, updatePatient }) {
   const [showAdd, setShowAdd] = useState(false);
-  function addPlan(plan) {
-    updatePatient({ ...patient, treatmentPlans: [{ id: uid("tp"), ...plan }, ...patient.treatmentPlans] });
-    setShowAdd(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true); setError("");
+      try {
+        const plans = await fetchTreatmentPlansFromServer(patient.id);
+        if (!cancelled && plans.length) {
+          updatePatient({ ...patient, treatmentPlans: plans.map(normalizeTreatmentPlan) });
+        }
+      } catch (e) {
+        if (!cancelled) setError("Could not reach get-treatment-plans — showing locally saved plans.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line
+  }, [patient.id]);
+
+  async function addPlan(plan) {
+    const tempPlan = { id: uid("tp"), ...plan };
+    setSaving(true); setError("");
+    try {
+      const saved = await addTreatmentPlanApi(patient.id, plan);
+      const finalPlan = normalizeTreatmentPlan({ ...tempPlan, ...saved, id: (saved && saved.id) || tempPlan.id });
+      updatePatient({ ...patient, treatmentPlans: [finalPlan, ...patient.treatmentPlans] });
+      setShowAdd(false);
+    } catch (e) {
+      setError(`Could not save to server (add-treatment-plan): ${e.message}. Saved locally instead.`);
+      updatePatient({ ...patient, treatmentPlans: [tempPlan, ...patient.treatmentPlans] });
+      setShowAdd(false);
+    } finally {
+      setSaving(false);
+    }
   }
   function setStatus(id, status) {
     updatePatient({ ...patient, treatmentPlans: patient.treatmentPlans.map((t) => t.id === id ? { ...t, status } : t) });
@@ -1397,7 +1660,11 @@ function TreatmentPlansTab({ patient, updatePatient }) {
   const STATUS_COLOR = { Proposed: ["#B4C0C6", "#263139"], Accepted: ["#2563EB", "#172F4A"], "In Progress": ["#B45309", "#3B2D13"], Completed: ["#15803D", "#12351F"], Cancelled: ["#B91C1C", "#3A171B"] };
   return (
     <div>
-      <div className="flex justify-end mb-3"><Button size="sm" onClick={() => setShowAdd(true)}><Plus size={14} /> New Treatment Plan</Button></div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs text-slate-400">{loading ? "Syncing plans from server…" : ""}</div>
+        <Button size="sm" onClick={() => setShowAdd(true)}><Plus size={14} /> New Treatment Plan</Button>
+      </div>
+      {error && <div className="mb-3 rounded-lg border border-red-800 bg-red-950 px-3.5 py-2.5 text-sm text-red-300">{error}</div>}
       <div className="flex flex-col gap-4">
         {patient.treatmentPlans.map((t) => (
           <Card key={t.id}>
@@ -1428,17 +1695,19 @@ function TreatmentPlansTab({ patient, updatePatient }) {
         ))}
         {!patient.treatmentPlans.length && <Card className="text-sm text-slate-400">No treatment plans yet.</Card>}
       </div>
-      {showAdd && <Modal title="New Treatment Plan" onClose={() => setShowAdd(false)} wide><AddTreatmentPlanForm patient={patient} onSubmit={addPlan} /></Modal>}
+      {showAdd && <Modal title="New Treatment Plan" onClose={() => setShowAdd(false)} wide><AddTreatmentPlanForm patient={patient} onSubmit={addPlan} saving={saving} /></Modal>}
     </div>
   );
 }
 
-function AddTreatmentPlanForm({ patient, onSubmit }) {
-  const [f, setF] = useState({ dentist: patient.dentist, diagnosis: "", teeth: "", proposed: "", priority: "Medium", cost: "", visits: "", start: todayISO(), completion: "", status: "Proposed", stages: "Consultation, Treatment, Review" });
+function AddTreatmentPlanForm({ patient, onSubmit, saving }) {
+  const [f, setF] = useState({ dentist: patient.dentist, diagnosis: "", teeth: "", proposed: TREATMENT_OPTIONS[0], proposedOther: "", priority: "Medium", cost: "", visits: "", start: todayISO(), completion: "", status: "Proposed", stages: "Consultation, Treatment, Review" });
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!f.proposed.trim()) return;
-      onSubmit({ ...f, teeth: f.teeth.split(",").map((t) => parseInt(t.trim(), 10)).filter((n) => !isNaN(n)), cost: Number(f.cost) || 0, visits: Number(f.visits) || 1, stages: f.stages.split(",").map((s) => s.trim()).filter(Boolean) }); }}>
+    <form onSubmit={(e) => { e.preventDefault();
+      const proposed = f.proposed === "Other" ? f.proposedOther.trim() : f.proposed;
+      if (!proposed) return;
+      onSubmit({ ...f, proposed, teeth: f.teeth.split(",").map((t) => parseInt(t.trim(), 10)).filter((n) => !isNaN(n)), cost: Number(f.cost) || 0, visits: Number(f.visits) || 1, stages: f.stages.split(",").map((s) => s.trim()).filter(Boolean) }); }}>
       <div className="grid grid-cols-2 gap-x-4">
         <Field label="Dentist"><select className={inputCls} value={f.dentist} onChange={set("dentist")}>{DOCTORS.map((d) => <option key={d.id}>{d.name}</option>)}</select></Field>
         <Field label="Priority"><select className={inputCls} value={f.priority} onChange={set("priority")}><option>Low</option><option>Medium</option><option>High</option></select></Field>
@@ -1446,8 +1715,13 @@ function AddTreatmentPlanForm({ patient, onSubmit }) {
       <Field label="Diagnosis"><input className={inputCls} value={f.diagnosis} onChange={set("diagnosis")} /></Field>
       <div className="grid grid-cols-2 gap-x-4">
         <Field label="Tooth number(s)"><input className={inputCls} value={f.teeth} onChange={set("teeth")} /></Field>
-        <Field label="Proposed treatment"><input className={inputCls} value={f.proposed} onChange={set("proposed")} required /></Field>
+        <Field label="Treatment">
+          <select className={inputCls} value={f.proposed} onChange={set("proposed")}>
+            {TREATMENT_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Field>
       </div>
+      {f.proposed === "Other" && <Field label="Specify treatment"><input className={inputCls} value={f.proposedOther} onChange={set("proposedOther")} required /></Field>}
       <div className="grid grid-cols-3 gap-x-4">
         <Field label="Estimated cost (₹)"><input type="number" className={inputCls} value={f.cost} onChange={set("cost")} /></Field>
         <Field label="No. of visits"><input type="number" className={inputCls} value={f.visits} onChange={set("visits")} /></Field>
@@ -1455,7 +1729,7 @@ function AddTreatmentPlanForm({ patient, onSubmit }) {
       </div>
       <Field label="Expected completion"><input type="date" className={inputCls} value={f.completion} onChange={set("completion")} /></Field>
       <Field label="Timeline stages, comma separated"><input className={inputCls} value={f.stages} onChange={set("stages")} /></Field>
-      <Button type="submit" className="w-full justify-center mt-1">Create Plan</Button>
+      <Button type="submit" disabled={saving} className="w-full justify-center mt-1">{saving ? "Saving…" : "Create Plan"}</Button>
     </form>
   );
 }
@@ -2290,19 +2564,31 @@ function LoginScreen({ onLogin }) {
 ===================================================================== */
 
 async function loadAll() {
-  const [patients, appointments, staffLog, inventory, notifications] = await Promise.all([
+  const [localPatients, appointments, staffLog, inventory, notifications] = await Promise.all([
     loadJSON("sdc:patients:v3", null),
     loadJSON("sdc:appointments:v3", null),
     loadJSON("sdc:staffLog:v3", {}),
     loadJSON("sdc:inventory:v3", null),
     loadJSON("sdc:notifications:v3", null),
   ]);
-  let pts = patients;
-  if (!pts) { pts = attachHistories(seedPatients()); }
+
+  let pts = null;
+  let backendOnline = false;
+  try {
+    const backendPatients = await fetchPatientsFromServer();
+    if (backendPatients && backendPatients.length) {
+      pts = backendPatients.map(normalizePatient);
+      backendOnline = true;
+    }
+  } catch (e) {
+    console.warn("get-patients webhook unavailable, using local data:", e.message);
+  }
+  if (!pts) pts = localPatients || attachHistories(seedPatients());
+
   const appts = appointments || seedAppointments(pts);
   const inv = inventory || seedInventory();
   const notif = notifications || seedNotifications(appts);
-  return { patients: pts, appointments: appts, staffLog, inventory: inv, notifications: notif };
+  return { patients: pts, appointments: appts, staffLog, inventory: inv, notifications: notif, backendOnline };
 }
 
 const CURRENT_USER_KEY = "sdc:currentUser:v1";
@@ -2427,7 +2713,7 @@ function App() {
         </header>
 
         <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
-          {page === "dashboard" && <Dashboard patients={patients} appointments={appointments} invoices={patients.flatMap(p=>p.invoices)} staffLog={staffLog} leave={[]} inventory={inventory} setPage={setPage} />}
+          {page === "dashboard" && <Dashboard patients={patients} appointments={appointments} invoices={patients.flatMap(p=>p.invoices)} staffLog={staffLog} leave={[]} inventory={inventory} setPage={setPage} currentUser={currentUser} />}
           {page === "patients" && !selectedPatient && <PatientsPage patients={patients} setPatients={setPatients} openProfile={openProfile} />}
           {page === "patients" && selectedPatient && <PatientProfile patient={selectedPatient} updatePatient={updatePatient} back={() => setSelectedPatientId(null)} />}
           {page === "appointments" && <AppointmentsPage date={apptDate} setDate={setApptDate} currentUser={currentUser} />}
