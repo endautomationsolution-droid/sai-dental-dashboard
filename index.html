@@ -422,8 +422,9 @@ async function saveJSON(key, value) {
 }
 
 /* =====================================================================
-   BACKEND API — n8n webhooks (Google Sheets–backed)
-   All four are POST webhooks. Confirmed field contracts:
+   PATIENT / TREATMENT-PLAN BACKEND — reuses the apiPost(path, body)
+   helper already defined above (REAL BACKEND section). All four are
+   POST webhooks. Confirmed field contracts:
 
    sync-patient  POST { name, phone, age }
      -> { isNew, mrn, name, phone, age, registeredOn? }
@@ -442,22 +443,13 @@ async function saveJSON(key, value) {
         each row has at least { PlanID, MRN, Date, ... }
 ===================================================================== */
 
-const API_BASE = "https://n8n.endat.co.in/webhook";
 const API = {
-  syncPatient: `${API_BASE}/sync-patient`,
-  getPatients: `${API_BASE}/get-patients`,
-  addTreatmentPlan: `${API_BASE}/add-treatment-plan`,
-  getTreatmentPlans: `${API_BASE}/get-treatment-plans`,
+  syncPatient: "sync-patient",
+  getPatients: "get-patients",
+  addTreatmentPlan: "add-treatment-plan",
+  getTreatmentPlans: "get-treatment-plans",
 };
 
-async function apiPost(url, body) {
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
-  const text = await res.text();
-  let json = {};
-  try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
-  if (!res.ok) throw new Error(json?.message || `Request failed (${res.status})`);
-  return json;
-}
 function asArray(payload, key) {
   if (Array.isArray(payload)) return payload;
   if (payload && Array.isArray(payload[key])) return payload[key];
