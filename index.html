@@ -68,7 +68,7 @@ const fmtDate = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN",
 const fmtDateShort = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short" });
 const rupee = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const calcAge = (dob) => { const d = new Date(dob); const t = new Date(); let a = t.getFullYear() - d.getFullYear(); const m = t.getMonth() - d.getMonth(); if (m < 0 || (m === 0 && t.getDate() < d.getDate())) a--; return a; };
-const initials = (name) => name.replace("Dr. ", "").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+const initials = (name) => String(name || "").replace("Dr. ", "").split(" ").filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "?";
 
 /* =====================================================================
    STATIC REFERENCE DATA
@@ -243,36 +243,42 @@ function ageToApproxDob(age) {
 }
 
 function normalizePatient(p) {
+  // Google Sheets can return numeric-looking cells (phone numbers, MRNs,
+  // etc.) as JS numbers instead of strings, which crashes any code that
+  // calls .split()/.toLowerCase()/.replace() on them. This guarantees
+  // every textual field really is a string before it reaches the UI.
+  const str = (v, fallback = "") => (v == null || v === "" ? fallback : String(v));
+
   const mrn = pick(p, "id", "mrn", "MRN", "patientId");
-  const name = pick(p, "name", "Name") || "";
-  const phone = pick(p, "mobile", "phone", "Phone") || "";
+  const name = str(pick(p, "name", "Name"));
+  const phone = str(pick(p, "mobile", "phone", "Phone"));
   const age = pick(p, "age", "Age");
-  const dob = pick(p, "dob", "DOB") || (age ? ageToApproxDob(age) : "");
+  const dob = str(pick(p, "dob", "DOB")) || (age ? ageToApproxDob(age) : "");
   return {
-    id: mrn || uid("PT"),
+    id: str(mrn) || uid("PT"),
     name,
     dob,
-    gender: pick(p, "gender", "Gender") || "Other",
+    gender: str(pick(p, "gender", "Gender"), "Other"),
     mobile: phone,
-    email: pick(p, "email", "Email") || "",
-    address: pick(p, "address", "Address") || "",
-    emergency: pick(p, "emergency", "Emergency") || "",
-    occupation: pick(p, "occupation", "Occupation") || "",
-    blood: pick(p, "blood", "Blood") || "",
-    allergies: pick(p, "allergies", "Allergies") || "None known",
-    meds: pick(p, "meds", "Meds") || "None",
-    prevTreatment: pick(p, "prevTreatment", "PrevTreatment") || "None prior",
-    insurance: pick(p, "insurance", "Insurance") || "Not insured",
-    dentist: pick(p, "dentist", "Dentist") || REAL_DOCTORS[0],
-    registered: pick(p, "registered", "registeredOn", "RegisteredOn") || todayISO(),
-    nextAppointment: pick(p, "nextAppointment") || null,
+    email: str(pick(p, "email", "Email")),
+    address: str(pick(p, "address", "Address")),
+    emergency: str(pick(p, "emergency", "Emergency")),
+    occupation: str(pick(p, "occupation", "Occupation")),
+    blood: str(pick(p, "blood", "Blood")),
+    allergies: str(pick(p, "allergies", "Allergies"), "None known"),
+    meds: str(pick(p, "meds", "Meds"), "None"),
+    prevTreatment: str(pick(p, "prevTreatment", "PrevTreatment"), "None prior"),
+    insurance: str(pick(p, "insurance", "Insurance"), "Not insured"),
+    dentist: str(pick(p, "dentist", "Dentist")) || REAL_DOCTORS[0],
+    registered: str(pick(p, "registered", "registeredOn", "RegisteredOn")) || todayISO(),
+    nextAppointment: str(pick(p, "nextAppointment")) || null,
     dentalChart: p.dentalChart || {},
-    visits: p.visits || [],
-    treatmentPlans: p.treatmentPlans || [],
-    prescriptions: p.prescriptions || [],
-    invoices: p.invoices || [],
-    documents: p.documents || [],
-    status: pick(p, "status", "Status") || "Active",
+    visits: Array.isArray(p.visits) ? p.visits : [],
+    treatmentPlans: Array.isArray(p.treatmentPlans) ? p.treatmentPlans : [],
+    prescriptions: Array.isArray(p.prescriptions) ? p.prescriptions : [],
+    invoices: Array.isArray(p.invoices) ? p.invoices : [],
+    documents: Array.isArray(p.documents) ? p.documents : [],
+    status: str(pick(p, "status", "Status"), "Active"),
   };
 }
 
@@ -495,7 +501,7 @@ function Dashboard({ patients, invoices, staffLog, inventory, setPage, currentUs
       finally { setRealLoading(false); }
     })();
   }, []); // eslint-disable-line
-  const realTodays = realBookings.filter((b) => b.Date === date).sort((a, b) => (a.Time || "").localeCompare(b.Time || ""));
+  const realTodays = realBookings.filter((b) => b.Date === date).sort((a, b) => String(a.Time || "").localeCompare(String(b.Time || "")));
 
   // Real leave records for today, from the clinic's Leave sheet
   const [realLeave, setRealLeave] = useState([]);
@@ -723,7 +729,7 @@ function PatientsPage({ patients, setPatients, openProfile }) {
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
-  const filtered = patients.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()) || p.mobile.includes(query) || p.id.toLowerCase().includes(query.toLowerCase()));
+  const filtered = patients.filter((p) => String(p.name || "").toLowerCase().includes(query.toLowerCase()) || String(p.mobile || "").includes(query) || String(p.id || "").toLowerCase().includes(query.toLowerCase()));
 
   async function refreshFromServer() {
     setRefreshing(true); setError("");
@@ -800,10 +806,10 @@ function PatientsPage({ patients, setPatients, openProfile }) {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-300">{calcAge(p.dob)} · {p.gender}</td>
-                      <td className="px-4 py-3 text-slate-300 font-mono">{p.mobile.split(" (")[0]}</td>
+                      <td className="px-4 py-3 text-slate-300 font-mono">{String(p.mobile || "").split(" (")[0]}</td>
                       <td className="px-4 py-3 text-slate-300">{lastVisit ? fmtDate(lastVisit.date) : "—"}</td>
                       <td className="px-4 py-3 text-slate-300">{p.nextAppointment ? fmtDate(p.nextAppointment) : "—"}</td>
-                      <td className="px-4 py-3 text-slate-300">{p.dentist.replace("Dr. ", "")}</td>
+                      <td className="px-4 py-3 text-slate-300">{String(p.dentist || "").replace("Dr. ", "")}</td>
                       <td className="px-4 py-3">{balance > 0 ? <span className="text-red-500 font-semibold">{rupee(balance)}</span> : <span className="text-slate-400">—</span>}</td>
                       <td className="px-4 py-3"><Badge label={p.status} color="#15803D" bg="#12351F" /></td>
                     </tr>
@@ -895,7 +901,7 @@ function PatientProfile({ patient, updatePatient, back }) {
               <div className="flex items-center gap-3 text-sm text-slate-400 mt-1 flex-wrap">
                 <span className="font-mono">{patient.id}</span>
                 <span>{calcAge(patient.dob)} yrs · {patient.gender}</span>
-                <span className="flex items-center gap-1"><Phone size={11} />{patient.mobile.split(" (")[0]}</span>
+                <span className="flex items-center gap-1"><Phone size={11} />{String(patient.mobile || "").split(" (")[0]}</span>
               </div>
               <div className="flex gap-2 mt-2 flex-wrap">
                 {patient.allergies !== "None known" && <Badge label={`Allergy: ${patient.allergies}`} color="#B91C1C" bg="#3A171B" />}
@@ -1603,7 +1609,7 @@ function AppointmentsPage({ date, setDate, currentUser }) {
   const filtered = bookings
     .filter((b) => (isDoctor ? true : (filterDoc === "all" || b.Doctor === filterDoc)))
     .filter((b) => (view === "day" ? b.Date === date : b.Date >= today))
-    .sort((a, b) => (a.Date + a.Time).localeCompare(b.Date + b.Time));
+    .sort((a, b) => (String(a.Date || "") + String(a.Time || "")).localeCompare(String(b.Date || "") + String(b.Time || "")));
 
   const doctorOptions = REAL_DOCTORS;
 
@@ -1942,7 +1948,7 @@ function LeavePage({ currentUser }) {
     load();
   }
 
-  const sorted = [...leave].sort((a, b) => (b.Date || "").localeCompare(a.Date || ""));
+  const sorted = [...leave].sort((a, b) => String(b.Date || "").localeCompare(String(a.Date || "")));
 
   return (
     <div>
