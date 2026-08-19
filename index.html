@@ -30,11 +30,11 @@
 import React, { useState, useEffect, useMemo } from "react";
 import ReactDOM from "react-dom/client";
 import {
-  LayoutDashboard, Users, CalendarDays, Stethoscope, ClipboardList, Pill as PillIcon,
+  LayoutDashboard, Users, CalendarDays, Stethoscope, ClipboardList,
   FileImage, Receipt, UserCog, ClipboardCheck, CalendarClock, Boxes, BarChart3, Bell,
-  Settings, Search, ChevronDown, ChevronRight, Plus, X, Check, XCircle, Clock, Phone,
+  Settings, Search, ChevronDown, ChevronRight, Plus, X, Clock, Phone,
   Mail, MapPin, AlertTriangle, Trash2, Edit3, Printer, Download, LogIn, LogOut,
-  IndianRupee, TrendingUp, Menu, ArrowLeft, FileText, Filter,
+  IndianRupee, TrendingUp, Menu, ArrowLeft, FileText,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area,
@@ -73,26 +73,6 @@ const initials = (name) => name.replace("Dr. ", "").split(" ").map((w) => w[0]).
 /* =====================================================================
    STATIC REFERENCE DATA
 ===================================================================== */
-
-const DOCTORS = [
-  { id: "dr_1", name: "Dr. Anjali Rao", spec: "General & Cosmetic Dentistry", color: "#0E7C86" },
-  { id: "dr_2", name: "Dr. Karthik Iyer", spec: "Orthodontics", color: "#B45309" },
-  { id: "dr_3", name: "Dr. Meera Suresh", spec: "Endodontics", color: "#7C3AED" },
-  { id: "dr_4", name: "Dr. Vikram Shetty", spec: "Oral Surgery & Implants", color: "#BE123C" },
-];
-
-const STAFF_DIRECTORY = [
-  { id: "st_1", empId: "SDC-001", name: "Dr. Anjali Rao", role: "Dentist", dept: "Clinical", phone: "98400 11223", email: "anjali.rao@saidental.clinic", joined: "2019-03-01", shift: "9:30 AM – 5:30 PM", status: "Active" },
-  { id: "st_2", empId: "SDC-002", name: "Dr. Karthik Iyer", role: "Orthodontist", dept: "Clinical", phone: "98400 22334", email: "karthik.iyer@saidental.clinic", joined: "2020-07-15", shift: "10:00 AM – 4:00 PM", status: "Active" },
-  { id: "st_3", empId: "SDC-003", name: "Dr. Meera Suresh", role: "Endodontist", dept: "Clinical", phone: "98400 33445", email: "meera.suresh@saidental.clinic", joined: "2021-01-11", shift: "9:00 AM – 3:00 PM", status: "Active" },
-  { id: "st_4", empId: "SDC-004", name: "Dr. Vikram Shetty", role: "Oral Surgeon", dept: "Clinical", phone: "98400 44556", email: "vikram.shetty@saidental.clinic", joined: "2022-05-20", shift: "11:00 AM – 6:00 PM", status: "Active" },
-  { id: "st_5", empId: "SDC-005", name: "Priya Nair", role: "Front Desk / Receptionist", dept: "Administration", phone: "90356 44210", email: "priya.nair@saidental.clinic", joined: "2019-06-01", shift: "9:00 AM – 6:00 PM", status: "Active" },
-  { id: "st_6", empId: "SDC-006", name: "Lakshmi Venkat", role: "Receptionist", dept: "Administration", phone: "90356 55321", email: "lakshmi.v@saidental.clinic", joined: "2023-02-14", shift: "12:00 PM – 8:00 PM", status: "Active" },
-  { id: "st_7", empId: "SDC-007", name: "Ravi Kumar", role: "Dental Assistant", dept: "Clinical Support", phone: "97400 87651", email: "ravi.kumar@saidental.clinic", joined: "2020-09-09", shift: "9:00 AM – 6:00 PM", status: "Active" },
-  { id: "st_8", empId: "SDC-008", name: "Fathima S.", role: "Dental Hygienist", dept: "Clinical Support", phone: "96334 22190", email: "fathima.s@saidental.clinic", joined: "2021-11-03", shift: "10:00 AM – 5:00 PM", status: "Active" },
-  { id: "st_9", empId: "SDC-009", name: "Joseph Thomas", role: "Sterilization & Lab", dept: "Clinical Support", phone: "94480 55671", email: "joseph.t@saidental.clinic", joined: "2018-08-19", shift: "9:00 AM – 5:00 PM", status: "Active" },
-  { id: "st_10", empId: "SDC-010", name: "Divya Krishnan", role: "Clinic Manager", dept: "Administration", phone: "99622 10981", email: "divya.k@saidental.clinic", joined: "2018-01-05", shift: "9:00 AM – 6:00 PM", status: "Active" },
-];
 
 const TREATMENT_OPTIONS = ["Consultation", "Scaling & Cleaning", "Filling", "Root Canal Treatment", "Extraction", "Crown", "Bridge", "Braces Adjustment", "Implant", "Whitening", "X-ray", "Other"];
 const MEDICINE_OPTIONS = ["Amoxicillin 500mg", "Ibuprofen 400mg", "Paracetamol 650mg", "Chlorhexidine Mouthwash", "Metronidazole 400mg", "Other"];
@@ -153,6 +133,11 @@ const NAV = [
 const API_BASE = "https://n8n.endat.co.in/webhook";
 
 const REAL_DOCTORS = ["Dr. Savitha", "Dr. Nayana", "Dr. Jyothi", "Dr. Rohit"];
+// No standalone staff/HR backend exists yet — this derives an honest,
+// non-fabricated staff list from the real doctor roster only (used for
+// the Staff and Attendance pages). Front-desk/support staff aren't
+// listed here since there's no real data source for them.
+const REAL_STAFF = REAL_DOCTORS.map((name, i) => ({ id: `doc_${i + 1}`, name, role: "Dentist", dept: "Clinical", status: "Active" }));
 
 async function apiPost(path, body) {
   const res = await fetch(`${API_BASE}/${path}`, {
@@ -184,226 +169,6 @@ async function apiGetLeave() {
 async function apiMarkLeave({ doctorName, date, reason }) {
   const data = await apiPost("mark-leave", { doctorName, date, reason });
   return Array.isArray(data) ? data[0] : data;
-}
-
-/* =====================================================================
-   SEED DATA
-===================================================================== */
-
-function seedPatients() {
-  const base = [
-    { name: "Arjun Menon", dob: "1991-04-12", gender: "Male", mobile: "98470 11223", email: "arjun.menon@gmail.com", address: "12 Kasturba Nagar, Adyar, Chennai", emergency: "Lakshmi Menon (Wife) · 98470 99881", occupation: "Software Engineer", blood: "O+", allergies: "None known", meds: "None", prevTreatment: "Braces (2015, completed elsewhere)", insurance: "Star Health · Policy #SH88213", dentist: "Dr. Anjali Rao" },
-    { name: "Divya Prakash", dob: "1998-11-02", gender: "Female", mobile: "90356 44210", email: "divya.prakash@outlook.com", address: "4B Lake View Apartments, Velachery, Chennai", emergency: "Ganesh Prakash (Father) · 90356 11223", occupation: "Graphic Designer", blood: "B+", allergies: "Penicillin", meds: "Cetirizine (occasional)", prevTreatment: "None prior", insurance: "Not insured", dentist: "Dr. Meera Suresh" },
-    { name: "Suresh Babu", dob: "1967-08-25", gender: "Male", mobile: "97400 87651", email: "sureshbabu67@gmail.com", address: "22 Gandhi Street, T. Nagar, Chennai", emergency: "Kavitha Babu (Wife) · 97400 22110", occupation: "Retired Bank Manager", blood: "A+", allergies: "None known", meds: "Amlodipine 5mg (hypertension)", prevTreatment: "Full mouth scaling (2023)", insurance: "HDFC Ergo · Policy #HE45109", dentist: "Dr. Anjali Rao" },
-    { name: "Fathima Zahra", dob: "2017-09-19", gender: "Female", mobile: "96334 22190 (Parent: Ayesha Zahra)", email: "ayesha.zahra@gmail.com", address: "9 Anna Nagar 2nd Ave, Chennai", emergency: "Ayesha Zahra (Mother) · 96334 22190", occupation: "Student", blood: "AB+", allergies: "None known", meds: "None", prevTreatment: "None prior — first dental visit", insurance: "Not insured", dentist: "Dr. Anjali Rao" },
-    { name: "Ramesh Iyengar", dob: "1980-01-30", gender: "Male", mobile: "94480 55671", email: "ramesh.iyengar@yahoo.com", address: "17 Besant Nagar 1st Street, Chennai", emergency: "Shobana Iyengar (Wife) · 94480 66782", occupation: "Chartered Accountant", blood: "O-", allergies: "Latex", meds: "None", prevTreatment: "Wisdom tooth extraction (2018)", insurance: "Star Health · Policy #SH22190", dentist: "Dr. Karthik Iyer" },
-    { name: "Meenakshi Sundaram", dob: "1995-06-08", gender: "Female", mobile: "89391 44567", email: "meena.sundaram@gmail.com", address: "3 Kalki Krishnamurthy Salai, Mylapore, Chennai", emergency: "Sundaram R. (Father) · 89391 22110", occupation: "Marketing Manager", blood: "B-", allergies: "None known", meds: "Thyroxine 50mcg", prevTreatment: "Teeth whitening (2024, elsewhere)", insurance: "Not insured", dentist: "Dr. Vikram Shetty" },
-    { name: "Naveen Krishnan", dob: "1988-12-15", gender: "Male", mobile: "91765 30982", email: "naveen.k@gmail.com", address: "56 OMR Road, Sholinganallur, Chennai", emergency: "Priya Krishnan (Wife) · 91765 11223", occupation: "Product Manager", blood: "A-", allergies: "Sulfa drugs", meds: "None", prevTreatment: "Root canal, tooth #46 (2021, elsewhere)", insurance: "ICICI Lombard · Policy #IL77234", dentist: "Dr. Meera Suresh" },
-    { name: "Kavya Reddy", dob: "2001-03-27", gender: "Female", mobile: "78458 90211", email: "kavya.reddy@gmail.com", address: "8 Perungudi Main Road, Chennai", emergency: "Reddy S. (Father) · 78458 11009", occupation: "Student, Final Year MBBS", blood: "O+", allergies: "None known", meds: "None", prevTreatment: "None prior", insurance: "Not insured", dentist: "Dr. Karthik Iyer" },
-  ];
-  return base.map((b, i) => ({
-    id: `PT-${1001 + i}`,
-    ...b,
-    registered: addDays(todayISO(), -(300 - i * 22)),
-    nextAppointment: null,
-    dentalChart: {},
-    visits: [],
-    treatmentPlans: [],
-    prescriptions: [],
-    invoices: [],
-    documents: [],
-    status: "Active",
-  }));
-}
-
-function attachHistories(patients) {
-  const p = (name) => patients.find((x) => x.name === name);
-
-  // Arjun Menon
-  Object.assign(p("Arjun Menon"), {
-    dentalChart: { 24: { condition: "filling", notes: "Composite filling, distal surface." }, 25: { condition: "filling", notes: "Composite filling, mesial surface." } },
-    visits: [
-      { id: uid("v"), date: addDays(todayISO(), -70), dentist: "Dr. Anjali Rao", complaint: "Routine checkup", symptoms: "None", exam: "Mild tartar buildup, gums slightly inflamed", diagnosis: "Early gingivitis", teeth: [], treatmentPerformed: "Scaling & polishing", treatmentRecommended: "6-month recall", notes: "Advised electric toothbrush and interdental floss.", followUp: addDays(todayISO(), 110), amount: 1200 },
-      { id: uid("v"), date: addDays(todayISO(), -28), dentist: "Dr. Karthik Iyer", complaint: "Crowding in lower front teeth", symptoms: "Mild discomfort chewing", exam: "Mild crowding, lower anterior region", diagnosis: "Class I malocclusion, mild crowding", teeth: [24, 25], treatmentPerformed: "Consultation, study models taken", treatmentRecommended: "Clear aligner therapy — 14 trays", notes: "Discussed aligners vs fixed braces; patient prefers aligners.", followUp: addDays(todayISO(), 2), amount: 500 },
-    ],
-    treatmentPlans: [
-      { id: uid("tp"), dentist: "Dr. Karthik Iyer", diagnosis: "Mild lower-arch crowding", teeth: [24, 25], proposed: "Clear aligner therapy (14 trays)", priority: "Medium", cost: 65000, visits: 8, start: addDays(todayISO(), 5), completion: addDays(todayISO(), 150), status: "Accepted", stages: ["Consultation", "Scans & Aligner Fabrication", "Aligner Fitting", "Monthly Reviews", "Retainer"] },
-    ],
-    prescriptions: [{ id: uid("rx"), date: addDays(todayISO(), -70), dentist: "Dr. Anjali Rao", diagnosis: "Early gingivitis", meds: [{ name: "Chlorhexidine Mouthwash 0.2%", dosage: "10ml", freq: "Twice daily", duration: "7 days", instructions: "Rinse after brushing, do not swallow" }] }],
-    invoices: [
-      { id: uid("inv"), number: "INV-2401", date: addDays(todayISO(), -70), treatment: "Scaling & Polishing", dentist: "Dr. Anjali Rao", cost: 1200, discount: 0, tax: 0, total: 1200, paidAmt: 1200, method: "UPI", status: "paid" },
-      { id: uid("inv"), number: "INV-2438", date: addDays(todayISO(), -28), treatment: "Ortho Consultation", dentist: "Dr. Karthik Iyer", cost: 500, discount: 0, tax: 0, total: 500, paidAmt: 500, method: "Cash", status: "paid" },
-    ],
-    nextAppointment: addDays(todayISO(), 2),
-  });
-
-  // Divya Prakash
-  Object.assign(p("Divya Prakash"), {
-    dentalChart: { 19: { condition: "root_canal", notes: "RCT in progress, sitting 2 of 3." } },
-    visits: [
-      { id: uid("v"), date: addDays(todayISO(), -12), dentist: "Dr. Meera Suresh", complaint: "Severe pain, lower left molar", symptoms: "Throbbing pain, worse at night, sensitive to hot", exam: "Deep caries reaching pulp, tooth #19 (FDI #36 equiv.)", diagnosis: "Irreversible pulpitis, tooth #36", teeth: [36], treatmentPerformed: "Access opening, pulp extirpation, temp filling", treatmentRecommended: "Root canal treatment, 3 sittings", notes: "Prescribed clindamycin — penicillin allergy noted in chart.", followUp: addDays(todayISO(), -5), amount: 3500 },
-      { id: uid("v"), date: addDays(todayISO(), -5), dentist: "Dr. Meera Suresh", complaint: "Follow-up RCT", symptoms: "No pain since last visit", exam: "No swelling, no tenderness on percussion", diagnosis: "RCT tooth #36, sitting 2", teeth: [36], treatmentPerformed: "Cleaning & shaping completed, working length confirmed", treatmentRecommended: "Obturation next visit", notes: "Healing well.", followUp: addDays(todayISO(), 4), amount: 2000 },
-    ],
-    treatmentPlans: [
-      { id: uid("tp"), dentist: "Dr. Meera Suresh", diagnosis: "Irreversible pulpitis, tooth #36", teeth: [36], proposed: "Root Canal Treatment + Crown", priority: "High", cost: 12000, visits: 4, start: addDays(todayISO(), -12), completion: addDays(todayISO(), 10), status: "In Progress", stages: ["Consultation", "X-Ray", "Root Canal", "Crown", "Follow-up"] },
-    ],
-    prescriptions: [{ id: uid("rx"), date: addDays(todayISO(), -12), dentist: "Dr. Meera Suresh", diagnosis: "Irreversible pulpitis, tooth #36", meds: [{ name: "Clindamycin 300mg", dosage: "1 capsule", freq: "3 times daily", duration: "5 days", instructions: "Take after food. Penicillin-allergic — do not substitute with amoxicillin." }, { name: "Ibuprofen 400mg", dosage: "1 tablet", freq: "As needed for pain", duration: "3 days", instructions: "Max 3 tablets/day" }] }],
-    invoices: [
-      { id: uid("inv"), number: "INV-2465", date: addDays(todayISO(), -12), treatment: "RCT Sitting 1", dentist: "Dr. Meera Suresh", cost: 3500, discount: 0, tax: 0, total: 3500, paidAmt: 3500, method: "UPI", status: "paid" },
-      { id: uid("inv"), number: "INV-2481", date: addDays(todayISO(), -5), treatment: "RCT Sitting 2", dentist: "Dr. Meera Suresh", cost: 2000, discount: 0, tax: 0, total: 2000, paidAmt: 0, method: "-", status: "pending" },
-    ],
-    nextAppointment: addDays(todayISO(), 4),
-  });
-
-  // Suresh Babu
-  Object.assign(p("Suresh Babu"), {
-    dentalChart: { 14: { condition: "crown", notes: "PFM crown cemented, post-RCT." } },
-    visits: [
-      { id: uid("v"), date: addDays(todayISO(), -95), dentist: "Dr. Anjali Rao", complaint: "Broken tooth, upper right", symptoms: "Sharp edge, mild sensitivity", exam: "Tooth #14 fractured post old RCT, insufficient tooth structure", diagnosis: "Fractured tooth #14 requiring crown", teeth: [14], treatmentPerformed: "Crown preparation, impression taken, temp crown fitted", treatmentRecommended: "PFM crown cementation", notes: "Shade matched A2.", followUp: addDays(todayISO(), -88), amount: 6500 },
-      { id: uid("v"), date: addDays(todayISO(), -7), dentist: "Dr. Anjali Rao", complaint: "Crown review", symptoms: "None", exam: "Crown well seated, margins intact, no sensitivity", diagnosis: "Post-crown review — normal", teeth: [14], treatmentPerformed: "Bite adjustment, polish", treatmentRecommended: "Routine 6-month recall", notes: "Healing well, patient satisfied with fit and shade.", followUp: addDays(todayISO(), 173), amount: 1500 },
-    ],
-    treatmentPlans: [
-      { id: uid("tp"), dentist: "Dr. Anjali Rao", diagnosis: "Fractured tooth #14", teeth: [14], proposed: "Crown restoration", priority: "High", cost: 8000, visits: 2, start: addDays(todayISO(), -95), completion: addDays(todayISO(), -88), status: "Completed", stages: ["Consultation", "Crown Prep", "Cementation", "Review"] },
-    ],
-    prescriptions: [],
-    invoices: [
-      { id: uid("inv"), number: "INV-2312", date: addDays(todayISO(), -95), treatment: "Crown Preparation", dentist: "Dr. Anjali Rao", cost: 6500, discount: 500, tax: 0, total: 6000, paidAmt: 6000, method: "Card", status: "paid" },
-      { id: uid("inv"), number: "INV-2455", date: addDays(todayISO(), -7), treatment: "Crown Review & Polish", dentist: "Dr. Anjali Rao", cost: 1500, discount: 0, tax: 0, total: 1500, paidAmt: 1500, method: "Cash", status: "paid" },
-    ],
-    nextAppointment: addDays(todayISO(), 173),
-  });
-
-  // Fathima Zahra
-  Object.assign(p("Fathima Zahra"), {
-    dentalChart: { 54: { condition: "caries", notes: "Early caries, primary molar — sealant advised." }, 64: { condition: "caries", notes: "Early caries, primary molar — sealant advised." } },
-    visits: [
-      { id: uid("v"), date: addDays(todayISO(), -9), dentist: "Dr. Anjali Rao", complaint: "First dental visit, routine checkup", symptoms: "None, mild anxiety", exam: "Two primary molars with early occlusal caries", diagnosis: "Early caries, teeth #54, #64", teeth: [54, 64], treatmentPerformed: "Fluoride application, oral hygiene demo", treatmentRecommended: "Pit & fissure sealants, both molars", notes: "Handled with tell-show-do technique, child cooperative by end of visit.", followUp: addDays(todayISO(), 5), amount: 800 },
-    ],
-    treatmentPlans: [
-      { id: uid("tp"), dentist: "Dr. Anjali Rao", diagnosis: "Early caries, primary molars", teeth: [54, 64], proposed: "Pit & fissure sealants", priority: "Medium", cost: 2400, visits: 1, start: addDays(todayISO(), 5), completion: addDays(todayISO(), 5), status: "Proposed", stages: ["Consultation", "Sealant Application", "Review"] },
-    ],
-    prescriptions: [],
-    invoices: [{ id: uid("inv"), number: "INV-2470", date: addDays(todayISO(), -9), treatment: "Checkup + Fluoride", dentist: "Dr. Anjali Rao", cost: 800, discount: 0, tax: 0, total: 800, paidAmt: 800, method: "UPI", status: "paid" }],
-    nextAppointment: addDays(todayISO(), 5),
-  });
-
-  // Ramesh Iyengar
-  Object.assign(p("Ramesh Iyengar"), {
-    dentalChart: {},
-    visits: [
-      { id: uid("v"), date: addDays(todayISO(), -52), dentist: "Dr. Karthik Iyer", complaint: "Monthly braces adjustment", symptoms: "Mild soreness expected", exam: "Overbite correcting on schedule, brackets intact", diagnosis: "Ongoing orthodontic correction", teeth: [], treatmentPerformed: "Wire change, elastics adjusted", treatmentRecommended: "Continue monthly reviews", notes: "Non-latex gloves used per allergy note.", followUp: addDays(todayISO(), -22), amount: 1000 },
-      { id: uid("v"), date: addDays(todayISO(), -22), dentist: "Dr. Karthik Iyer", complaint: "Monthly braces adjustment", symptoms: "None", exam: "Good progress, overbite reducing", diagnosis: "Ongoing orthodontic correction", teeth: [], treatmentPerformed: "Wire tightened", treatmentRecommended: "Next adjustment in 4 weeks", notes: "On track for 18-month treatment plan.", followUp: addDays(todayISO(), 6), amount: 1000 },
-    ],
-    treatmentPlans: [
-      { id: uid("tp"), dentist: "Dr. Karthik Iyer", diagnosis: "Class II malocclusion, overbite", teeth: [], proposed: "Fixed metal braces, 18-month course", priority: "Medium", cost: 85000, visits: 18, start: addDays(todayISO(), -160), completion: addDays(todayISO(), 380), status: "In Progress", stages: ["Consultation", "Records & X-Ray", "Bonding", "Monthly Adjustments", "Debonding & Retainer"] },
-    ],
-    prescriptions: [],
-    invoices: [
-      { id: uid("inv"), number: "INV-2340", date: addDays(todayISO(), -52), treatment: "Braces Adjustment", dentist: "Dr. Karthik Iyer", cost: 1000, discount: 0, tax: 0, total: 1000, paidAmt: 1000, method: "UPI", status: "paid" },
-      { id: uid("inv"), number: "INV-2402", date: addDays(todayISO(), -22), treatment: "Braces Adjustment", dentist: "Dr. Karthik Iyer", cost: 1000, discount: 0, tax: 0, total: 1000, paidAmt: 500, method: "Cash", status: "partial" },
-    ],
-    nextAppointment: addDays(todayISO(), 6),
-  });
-
-  // Meenakshi Sundaram
-  Object.assign(p("Meenakshi Sundaram"), {
-    dentalChart: { 11: { condition: "other", notes: "Slight discoloration, whitening candidate." }, 21: { condition: "other", notes: "Slight discoloration, whitening candidate." } },
-    visits: [
-      { id: uid("v"), date: addDays(todayISO(), -18), dentist: "Dr. Vikram Shetty", complaint: "Wants brighter smile before wedding", symptoms: "None", exam: "Mild extrinsic staining, healthy gums", diagnosis: "Extrinsic tooth discoloration", teeth: [11, 21], treatmentPerformed: "Shade assessment, consultation", treatmentRecommended: "In-office whitening, 1 session", notes: "Discussed expected shade improvement (2-3 shades).", followUp: addDays(todayISO(), 3), amount: 500 },
-    ],
-    treatmentPlans: [
-      { id: uid("tp"), dentist: "Dr. Vikram Shetty", diagnosis: "Extrinsic discoloration", teeth: [11, 21], proposed: "In-office teeth whitening", priority: "Low", cost: 9000, visits: 1, start: addDays(todayISO(), 3), completion: addDays(todayISO(), 3), status: "Accepted", stages: ["Consultation", "Whitening Session", "Review"] },
-    ],
-    prescriptions: [],
-    invoices: [{ id: uid("inv"), number: "INV-2477", date: addDays(todayISO(), -18), treatment: "Whitening Consultation", dentist: "Dr. Vikram Shetty", cost: 500, discount: 0, tax: 0, total: 500, paidAmt: 500, method: "UPI", status: "paid" }],
-    nextAppointment: addDays(todayISO(), 3),
-  });
-
-  // Naveen Krishnan
-  Object.assign(p("Naveen Krishnan"), {
-    dentalChart: { 46: { condition: "root_canal", notes: "RCT done elsewhere 2021, asymptomatic." }, 48: { condition: "extraction_required", notes: "Impacted wisdom tooth, recurring pericoronitis." } },
-    visits: [
-      { id: uid("v"), date: addDays(todayISO(), -3), dentist: "Dr. Vikram Shetty", complaint: "Recurring pain and swelling near back molar", symptoms: "Pain on chewing, gum swelling around wisdom tooth", exam: "Partially erupted, impacted #48 with pericoronal inflammation", diagnosis: "Recurrent pericoronitis, impacted tooth #48", teeth: [48], treatmentPerformed: "Irrigation, antibiotics prescribed", treatmentRecommended: "Surgical extraction of #48", notes: "OPG advised before surgery.", followUp: addDays(todayISO(), 11), amount: 700 },
-    ],
-    treatmentPlans: [
-      { id: uid("tp"), dentist: "Dr. Vikram Shetty", diagnosis: "Impacted tooth #48, recurrent pericoronitis", teeth: [48], proposed: "Surgical extraction", priority: "High", cost: 7000, visits: 2, start: addDays(todayISO(), 11), completion: addDays(todayISO(), 18), status: "Accepted", stages: ["Consultation", "OPG X-Ray", "Surgical Extraction", "Suture Removal"] },
-    ],
-    prescriptions: [{ id: uid("rx"), date: addDays(todayISO(), -3), dentist: "Dr. Vikram Shetty", diagnosis: "Pericoronitis, tooth #48", meds: [{ name: "Amoxicillin 500mg", dosage: "1 capsule", freq: "3 times daily", duration: "5 days", instructions: "Complete full course" }, { name: "Betadine Mouth Gargle", dosage: "10ml diluted", freq: "Twice daily", duration: "5 days", instructions: "Gargle, do not swallow" }] }],
-    invoices: [{ id: uid("inv"), number: "INV-2491", date: addDays(todayISO(), -3), treatment: "Consultation + Irrigation", dentist: "Dr. Vikram Shetty", cost: 700, discount: 0, tax: 0, total: 700, paidAmt: 0, method: "-", status: "overdue" }],
-    nextAppointment: addDays(todayISO(), 11),
-  });
-
-  // Kavya Reddy
-  Object.assign(p("Kavya Reddy"), {
-    dentalChart: {},
-    visits: [
-      { id: uid("v"), date: addDays(todayISO(), -1), dentist: "Dr. Karthik Iyer", complaint: "Wants to explore braces options", symptoms: "None", exam: "Mild spacing, upper anterior", diagnosis: "Mild diastema", teeth: [11, 21], treatmentPerformed: "Consultation, photos taken", treatmentRecommended: "Clear aligners or ceramic braces", notes: "Patient to decide budget-permitting option next visit.", followUp: addDays(todayISO(), 6), amount: 500 },
-    ],
-    treatmentPlans: [],
-    prescriptions: [],
-    invoices: [{ id: uid("inv"), number: "INV-2499", date: addDays(todayISO(), -1), treatment: "Ortho Consultation", dentist: "Dr. Karthik Iyer", cost: 500, discount: 0, tax: 0, total: 500, paidAmt: 500, method: "UPI", status: "paid" }],
-    nextAppointment: addDays(todayISO(), 6),
-  });
-
-  return patients;
-}
-
-function seedAppointments(patients) {
-  const date = todayISO();
-  const rows = [
-    { time: "09:00", patient: "Arjun Menon", dentist: "Dr. Anjali Rao", treatment: "Aligner Fitting Review", duration: 30, status: "completed", pay: "paid" },
-    { time: "09:30", patient: "Suresh Babu", dentist: "Dr. Anjali Rao", treatment: "6-Month Recall Checkup", duration: 30, status: "completed", pay: "pending" },
-    { time: "10:00", patient: "Ramesh Iyengar", dentist: "Dr. Karthik Iyer", treatment: "Braces Adjustment", duration: 30, status: "in_consultation", pay: "pending" },
-    { time: "10:30", patient: "Kavya Reddy", dentist: "Dr. Karthik Iyer", treatment: "Ortho Follow-up", duration: 30, status: "waiting", pay: "pending" },
-    { time: "11:00", patient: "Divya Prakash", dentist: "Dr. Meera Suresh", treatment: "RCT Sitting 3 — Obturation", duration: 45, status: "confirmed", pay: "pending" },
-    { time: "11:30", patient: "Fathima Zahra", dentist: "Dr. Anjali Rao", treatment: "Sealant Application", duration: 30, status: "confirmed", pay: "pending" },
-    { time: "12:00", patient: "Meenakshi Sundaram", dentist: "Dr. Vikram Shetty", treatment: "In-office Whitening", duration: 60, status: "confirmed", pay: "pending" },
-    { time: "14:00", patient: "Naveen Krishnan", dentist: "Dr. Vikram Shetty", treatment: "OPG Review + Extraction Planning", duration: 30, status: "confirmed", pay: "pending" },
-    { time: "15:00", patient: "New Walk-in — Sathya Moorthy", dentist: "Dr. Anjali Rao", treatment: "New Patient Consultation", duration: 30, status: "waiting", pay: "pending" },
-    { time: "16:00", patient: "Arjun Menon", dentist: "Dr. Karthik Iyer", treatment: "Aligner Tray #3 Handover", duration: 20, status: "cancelled", pay: "pending" },
-  ];
-  return rows.map((r) => {
-    const pat = patients.find((p) => p.name === r.patient);
-    const doc = DOCTORS.find((d) => d.name === r.dentist);
-    return { id: uid("apt"), date, time: r.time, duration: r.duration, patientId: pat?.id || null, patientName: r.patient, doctorId: doc.id, treatment: r.treatment, status: r.status, payStatus: r.pay, notes: "" };
-  });
-}
-
-function seedInventory() {
-  return [
-    { id: uid("inv"), name: "Latex Examination Gloves (M)", category: "Consumables", qty: 40, unit: "boxes", min: 20, supplier: "MedSupply India", purchased: addDays(todayISO(), -20), expiry: addDays(todayISO(), 400), cost: 320 },
-    { id: uid("inv"), name: "Nitrile Gloves (Latex-free, M)", category: "Consumables", qty: 8, unit: "boxes", min: 15, supplier: "MedSupply India", purchased: addDays(todayISO(), -10), expiry: addDays(todayISO(), 400), cost: 380 },
-    { id: uid("inv"), name: "Composite Resin (A2 Shade)", category: "Dental Materials", qty: 12, unit: "syringes", min: 10, supplier: "3M Dental", purchased: addDays(todayISO(), -35), expiry: addDays(todayISO(), 300), cost: 1450 },
-    { id: uid("inv"), name: "Local Anesthetic (Lignocaine 2%)", category: "Medicines", qty: 6, unit: "boxes", min: 10, supplier: "Neon Labs", purchased: addDays(todayISO(), -15), expiry: addDays(todayISO(), 25), cost: 890 },
-    { id: uid("inv"), name: "Disposable Face Masks", category: "Consumables", qty: 60, unit: "boxes", min: 20, supplier: "MedSupply India", purchased: addDays(todayISO(), -8), expiry: addDays(todayISO(), 500), cost: 210 },
-    { id: uid("inv"), name: "Dental X-Ray Films", category: "Consumables", qty: 5, unit: "packs", min: 8, supplier: "Kodak Dental", purchased: addDays(todayISO(), -40), expiry: addDays(todayISO(), 250), cost: 1600 },
-    { id: uid("inv"), name: "Endo Files (Rotary, Assorted)", category: "Instruments", qty: 18, unit: "sets", min: 10, supplier: "Dentsply Sirona", purchased: addDays(todayISO(), -60), expiry: null, cost: 2200 },
-    { id: uid("inv"), name: "Alginate Impression Material", category: "Dental Materials", qty: 9, unit: "kg", min: 6, supplier: "3M Dental", purchased: addDays(todayISO(), -25), expiry: addDays(todayISO(), 18), cost: 950 },
-    { id: uid("inv"), name: "Disposable Syringes 5ml", category: "Consumables", qty: 150, unit: "pieces", min: 100, supplier: "MedSupply India", purchased: addDays(todayISO(), -5), expiry: addDays(todayISO(), 600), cost: 8 },
-    { id: uid("inv"), name: "Sterilization Pouches", category: "Consumables", qty: 22, unit: "packs", min: 15, supplier: "MedSupply India", purchased: addDays(todayISO(), -12), expiry: addDays(todayISO(), 700), cost: 450 },
-  ];
-}
-
-function seedLeave() {
-  return [
-    { id: uid("lv"), staffId: "st_7", staffName: "Ravi Kumar", type: "Sick Leave", start: addDays(todayISO(), 2), end: addDays(todayISO(), 3), days: 2, reason: "Fever, advised rest by physician", status: "Pending" },
-    { id: uid("lv"), staffId: "st_6", staffName: "Lakshmi Venkat", type: "Casual Leave", start: addDays(todayISO(), 6), end: addDays(todayISO(), 6), days: 1, reason: "Family function", status: "Approved" },
-    { id: uid("lv"), staffId: "st_8", staffName: "Fathima S.", type: "Annual Leave", start: addDays(todayISO(), 15), end: addDays(todayISO(), 19), days: 5, reason: "Planned vacation", status: "Pending" },
-    { id: uid("lv"), staffId: "st_9", staffName: "Joseph Thomas", type: "Emergency Leave", start: addDays(todayISO(), -2), end: addDays(todayISO(), -2), days: 1, reason: "Family emergency", status: "Approved" },
-  ];
-}
-
-function seedNotifications(appointments) {
-  return [
-    { id: uid("nt"), type: "appointment", priority: "high", text: "Naveen Krishnan's extraction consult is unconfirmed for 2:00 PM today.", time: "08:10 AM", read: false },
-    { id: uid("nt"), type: "payment", priority: "high", text: "Invoice INV-2491 (₹700) is overdue — Naveen Krishnan.", time: "08:05 AM", read: false },
-    { id: uid("nt"), type: "followup", priority: "medium", text: "Divya Prakash is due for RCT sitting 3 today at 11:00 AM.", time: "07:50 AM", read: false },
-    { id: uid("nt"), type: "inventory", priority: "high", text: "Local Anesthetic (Lignocaine 2%) expires in 25 days — 6 boxes left, below minimum.", time: "Yesterday", read: false },
-    { id: uid("nt"), type: "inventory", priority: "medium", text: "Nitrile Gloves (M) stock below minimum threshold (8 of 15).", time: "Yesterday", read: true },
-    { id: uid("nt"), type: "leave", priority: "medium", text: "Ravi Kumar requested 2 days sick leave starting " + fmtDateShort(addDays(todayISO(), 2)) + ".", time: "Yesterday", read: false },
-    { id: uid("nt"), type: "appointment", priority: "low", text: "Arjun Menon's 4:00 PM appointment was cancelled.", time: "2 days ago", read: true },
-    { id: uid("nt"), type: "followup", priority: "low", text: "Fathima Zahra due for sealant application in 5 days.", time: "2 days ago", read: true },
-  ];
 }
 
 async function loadJSON(key, fallback) {
@@ -498,7 +263,7 @@ function normalizePatient(p) {
     meds: pick(p, "meds", "Meds") || "None",
     prevTreatment: pick(p, "prevTreatment", "PrevTreatment") || "None prior",
     insurance: pick(p, "insurance", "Insurance") || "Not insured",
-    dentist: pick(p, "dentist", "Dentist") || DOCTORS[0].name,
+    dentist: pick(p, "dentist", "Dentist") || REAL_DOCTORS[0],
     registered: pick(p, "registered", "registeredOn", "RegisteredOn") || todayISO(),
     nextAppointment: pick(p, "nextAppointment") || null,
     dentalChart: p.dentalChart || {},
@@ -609,7 +374,7 @@ function Card({ children, className = "", padded = true, onClick }) {
   return <div onClick={onClick} className={`bg-slate-900 rounded-xl border border-slate-700 ${padded ? "p-5" : ""} ${onClick ? "cursor-pointer" : ""} ${className}`}>{children}</div>;
 }
 
-function Button({ children, onClick, variant = "primary", type = "button", disabled, className = "", size = "md" }) {
+function Button({ children, onClick, variant = "primary", type = "button", disabled, className = "", size = "md", title }) {
   const base = "inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
   const sizes = { md: "px-4 py-2.5 text-sm", sm: "px-3 py-1.5 text-sm" };
   const variants = {
@@ -619,7 +384,7 @@ function Button({ children, onClick, variant = "primary", type = "button", disab
     danger: "bg-transparent text-red-500 hover:bg-red-950",
     dark: "bg-slate-200 text-white hover:bg-black",
   };
-  return <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>{children}</button>;
+  return <button type={type} onClick={onClick} disabled={disabled} title={title} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>{children}</button>;
 }
 
 function IconBtn({ icon: Icon, onClick, title, tone = "default" }) {
@@ -704,21 +469,15 @@ function Paginated({ rows, pageSize = 8, children }) {
    DASHBOARD
 ===================================================================== */
 
-function Dashboard({ patients, appointments, invoices, staffLog, leave, inventory, setPage, currentUser }) {
+function Dashboard({ patients, invoices, staffLog, inventory, setPage, currentUser }) {
   const date = todayISO();
   const yesterday = addDays(date, -1);
-  const todays = appointments.filter((a) => a.date === date);
-  const yTodays = appointments.filter((a) => a.date === yesterday);
-  const completed = todays.filter((a) => a.status === "completed").length;
-  const upcoming = todays.filter((a) => ["confirmed", "waiting"].includes(a.status)).length;
-  const cancelled = todays.filter((a) => a.status === "cancelled" || a.status === "no_show").length;
   const newPatients = patients.filter((p) => p.registered >= addDays(date, -30)).length;
   const followUps = patients.filter((p) => p.nextAppointment && p.nextAppointment <= addDays(date, 7)).length;
   const pendingPay = invoices.filter((i) => i.status === "pending" || i.status === "partial" || i.status === "overdue").reduce((a, i) => a + (i.total - i.paidAmt), 0);
   const todayRevenue = invoices.filter((i) => i.date === date).reduce((a, i) => a + i.paidAmt, 0);
   const yRevenue = invoices.filter((i) => i.date === yesterday).reduce((a, i) => a + i.paidAmt, 0);
   const revDelta = yRevenue > 0 ? Math.round(((todayRevenue - yRevenue) / yRevenue) * 100) : (todayRevenue > 0 ? 100 : 0);
-  const apptDelta = todays.length - yTodays.length;
 
   // Real, live bookings from the clinic's WhatsApp booking system (Bookings sheet)
   const isDoctor = currentUser?.role === "doctor";
@@ -738,17 +497,22 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
   }, []); // eslint-disable-line
   const realTodays = realBookings.filter((b) => b.Date === date).sort((a, b) => (a.Time || "").localeCompare(b.Time || ""));
 
+  // Real leave records for today, from the clinic's Leave sheet
+  const [realLeave, setRealLeave] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try { setRealLeave(await apiGetLeave()); } catch (e) { /* ignore */ }
+    })();
+  }, []);
+  const onLeaveToday = realLeave.filter((l) => l.Date === date).length;
+
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const lowStock = (inventory || []).filter((i) => i.qty < i.min).length;
-  const pendingLeave = (leave || []).filter((l) => l.status === "Pending").length;
 
   const kpis = [
     { label: "Appointments Today", value: realTodays.length, icon: CalendarDays, tint: "teal", delta: "from live bookings" },
-    { label: "Completed", value: completed, icon: Check, tint: "emerald", delta: `${todays.length ? Math.round((completed / todays.length) * 100) : 0}% of today` },
-    { label: "Upcoming", value: upcoming, icon: Clock, tint: "sky", delta: "confirmed + waiting" },
-    { label: "Cancelled / No-show", value: cancelled, icon: XCircle, tint: "rose", delta: cancelled ? "review with front desk" : "none today" },
     { label: "New Patients (30d)", value: newPatients, icon: Users, tint: "indigo", delta: "last 30 days" },
     { label: "Follow-ups Due (7d)", value: followUps, icon: ClipboardList, tint: "amber", delta: "recall reminders" },
     { label: "Pending Payments", value: rupee(pendingPay), icon: IndianRupee, tint: "orange", delta: "across all patients" },
@@ -793,7 +557,7 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
   const alerts = [
     { label: "Pending payments", value: rupee(pendingPay), icon: IndianRupee, tone: "rose", page: "billing", show: pendingPay > 0 },
     { label: "Low stock items", value: lowStock, icon: Boxes, tone: "amber", page: "inventory", show: lowStock > 0 },
-    { label: "Leave requests", value: pendingLeave, icon: CalendarClock, tone: "sky", page: "leave", show: pendingLeave > 0 },
+    { label: "On leave today", value: onLeaveToday, icon: CalendarClock, tone: "sky", page: "leave", show: onLeaveToday > 0 },
     { label: "Follow-ups due (7d)", value: followUps, icon: ClipboardList, tone: "teal", page: "patients", show: followUps > 0 },
   ].filter((a) => a.show);
 
@@ -818,7 +582,7 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         {kpis.map((k) => (
           <Card key={k.label} className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -896,7 +660,7 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
         </Card>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-5 mb-6">
+      <div className="grid md:grid-cols-2 gap-5 mb-6">
         <Card>
           <div className="text-base font-bold text-slate-100 mb-3">Patient Statistics</div>
           <div className="flex flex-col gap-2.5 text-sm">
@@ -905,21 +669,6 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
             <div className="flex justify-between"><span className="text-slate-400">Returning patients</span><span className="font-semibold text-slate-100">{returning}</span></div>
             <div className="flex justify-between"><span className="text-slate-400">Active treatment</span><span className="font-semibold text-slate-100">{activeTx}</span></div>
             <div className="flex justify-between"><span className="text-slate-400">Follow-up due (7d)</span><span className="font-semibold text-slate-100">{followUps}</span></div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="text-base font-bold text-slate-100 mb-3">Appointments by Status</div>
-          <div style={{ height: 170 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={Object.entries(APPT_STATUS).map(([k, v]) => ({ name: v.label, value: todays.filter((a) => a.status === k).length, color: v.color }))}
-                  dataKey="value" nameKey="name" innerRadius={35} outerRadius={65} paddingAngle={2}>
-                  {Object.entries(APPT_STATUS).map(([k, v]) => <Cell key={k} fill={v.color} />)}
-                </Pie>
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, background: "#0D191E", border: "1px solid #24343A" }} labelStyle={{ color: "#E8F0F2" }} />
-              </PieChart>
-            </ResponsiveContainer>
           </div>
         </Card>
 
@@ -944,7 +693,7 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
       <Card>
         <div className="text-base font-bold text-slate-100 mb-3">Staff Present Today</div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {STAFF_DIRECTORY.map((s) => {
+          {REAL_STAFF.map((s) => {
             const rec = (staffLog[date] || {})[s.id];
             const present = rec?.status === "present";
             const absent = rec?.status === "absent";
@@ -958,6 +707,7 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
         </div>
       </Card>
     </div>
+
   );
 }
 
@@ -1071,7 +821,7 @@ function PatientsPage({ patients, setPatients, openProfile }) {
 }
 
 function AddPatientForm({ onSubmit, saving }) {
-  const [f, setF] = useState({ name: "", dob: "", gender: "Female", mobile: "", email: "", address: "", emergency: "", occupation: "", blood: "O+", allergies: "", meds: "", prevTreatment: "", insurance: "", dentist: DOCTORS[0].name });
+  const [f, setF] = useState({ name: "", dob: "", gender: "Female", mobile: "", email: "", address: "", emergency: "", occupation: "", blood: "O+", allergies: "", meds: "", prevTreatment: "", insurance: "", dentist: REAL_DOCTORS[0] });
   const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (!f.name.trim() || !f.mobile.trim() || !f.dob) return; onSubmit({ ...f, allergies: f.allergies || "None known", meds: f.meds || "None", prevTreatment: f.prevTreatment || "None prior", insurance: f.insurance || "Not insured" }); }}>
@@ -1098,7 +848,7 @@ function AddPatientForm({ onSubmit, saving }) {
       <div className="grid grid-cols-2 gap-x-4">
         <Field label="Insurance details"><input className={inputCls} placeholder="Provider · policy #" value={f.insurance} onChange={set("insurance")} /></Field>
         <Field label="Assigned dentist">
-          <select className={inputCls} value={f.dentist} onChange={set("dentist")}>{DOCTORS.map((d) => <option key={d.id}>{d.name}</option>)}</select>
+          <select className={inputCls} value={f.dentist} onChange={set("dentist")}>{REAL_DOCTORS.map((name) => <option key={name}>{name}</option>)}</select>
         </Field>
       </div>
       <Button type="submit" disabled={saving} className="w-full justify-center mt-1">{saving ? "Saving…" : "Register Patient"}</Button>
@@ -1266,7 +1016,7 @@ function NewVisitForm({ patient, onSubmit }) {
       onSubmit({ ...f, treatmentPerformed, rxMeds, teeth, amount: Number(f.amount) || 0 }); }}>
       <div className="grid grid-cols-2 gap-x-4">
         <Field label="Visit date"><input type="date" className={inputCls} value={f.date} onChange={set("date")} required /></Field>
-        <Field label="Dentist"><select className={inputCls} value={f.dentist} onChange={set("dentist")}>{DOCTORS.map((d) => <option key={d.id}>{d.name}</option>)}</select></Field>
+        <Field label="Dentist"><select className={inputCls} value={f.dentist} onChange={set("dentist")}>{REAL_DOCTORS.map((name) => <option key={name}>{name}</option>)}</select></Field>
       </div>
       <Field label="Chief complaint"><input className={inputCls} value={f.complaint} onChange={set("complaint")} required /></Field>
       <div className="grid grid-cols-2 gap-x-4">
@@ -1701,7 +1451,7 @@ function AddTreatmentPlanForm({ patient, onSubmit, saving }) {
       if (!proposed) return;
       onSubmit({ ...f, proposed, teeth: f.teeth.split(",").map((t) => parseInt(t.trim(), 10)).filter((n) => !isNaN(n)), cost: Number(f.cost) || 0, visits: Number(f.visits) || 1, stages: f.stages.split(",").map((s) => s.trim()).filter(Boolean) }); }}>
       <div className="grid grid-cols-2 gap-x-4">
-        <Field label="Dentist"><select className={inputCls} value={f.dentist} onChange={set("dentist")}>{DOCTORS.map((d) => <option key={d.id}>{d.name}</option>)}</select></Field>
+        <Field label="Dentist"><select className={inputCls} value={f.dentist} onChange={set("dentist")}>{REAL_DOCTORS.map((name) => <option key={name}>{name}</option>)}</select></Field>
         <Field label="Priority"><select className={inputCls} value={f.priority} onChange={set("priority")}><option>Low</option><option>Medium</option><option>High</option></select></Field>
       </div>
       <Field label="Diagnosis"><input className={inputCls} value={f.diagnosis} onChange={set("diagnosis")} /></Field>
@@ -1873,7 +1623,7 @@ function AppointmentsPage({ date, setDate, currentUser }) {
                 {doctorOptions.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             )}
-            <Button variant="secondary" onClick={load}>{loading ? "Refreshing…" : "Refresh"}</Button>
+            <Button variant="outline" onClick={load}>{loading ? "Refreshing…" : "Refresh"}</Button>
           </div>
         } />
 
@@ -1904,48 +1654,6 @@ function AppointmentsPage({ date, setDate, currentUser }) {
         </div>
       </Card>
     </div>
-  );
-}
-
-function CreateAppointmentForm({ patients, appointments, defaultDate, onSubmit }) {
-  const [f, setF] = useState({ patientName: "", doctorId: DOCTORS[0].id, date: defaultDate, time: "09:00", duration: 30, treatment: "" });
-  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
-
-  const busy = appointments.filter((a) => a.doctorId === f.doctorId && a.date === f.date && a.status !== "cancelled").map((a) => a.time);
-  const openTimes = useMemo(() => {
-    const list = [];
-    for (let h = 9; h < 18; h++) for (const m of ["00", "30"]) {
-      const t = `${String(h).padStart(2, "0")}:${m}`;
-      if (!busy.includes(t)) list.push(t);
-    }
-    return list;
-  }, [busy.join(",")]);
-
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); if (!f.patientName.trim() || !f.treatment.trim()) return;
-      const pat = patients.find((p) => p.name === f.patientName);
-      onSubmit({ ...f, patientId: pat?.id || null, duration: Number(f.duration) }); }}>
-      <Field label="Patient" hint="Type an existing patient's name, or a new walk-in name">
-        <input className={inputCls} list="patient-names" value={f.patientName} onChange={set("patientName")} required />
-        <datalist id="patient-names">{patients.map((p) => <option key={p.id} value={p.name} />)}</datalist>
-      </Field>
-      <div className="grid grid-cols-2 gap-x-4">
-        <Field label="Dentist"><select className={inputCls} value={f.doctorId} onChange={set("doctorId")}>{DOCTORS.map((d) => <option key={d.id} value={d.id}>{d.name} — {d.spec}</option>)}</select></Field>
-        <Field label="Date"><input type="date" className={inputCls} value={f.date} onChange={set("date")} required /></Field>
-      </div>
-      <Field label="Available slots" hint="Grayed times are already booked with this dentist">
-        <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1">
-          {openTimes.map((t) => (
-            <button type="button" key={t} onClick={() => setF((p) => ({ ...p, time: t }))} className={`px-2.5 py-1.5 rounded-md text-sm font-mono font-semibold border ${f.time === t ? "bg-teal-600 text-white border-teal-600" : "border-slate-600 text-slate-300 hover:bg-slate-800"}`}>{t}</button>
-          ))}
-        </div>
-      </Field>
-      <div className="grid grid-cols-2 gap-x-4">
-        <Field label="Treatment / procedure"><input className={inputCls} value={f.treatment} onChange={set("treatment")} required /></Field>
-        <Field label="Duration (min)"><input type="number" min="10" step="5" className={inputCls} value={f.duration} onChange={set("duration")} /></Field>
-      </div>
-      <Button type="submit" className="w-full justify-center mt-1">Book Appointment</Button>
-    </form>
   );
 }
 
@@ -2113,23 +1821,21 @@ function BillingPage({ patients }) {
 
 function StaffPage() {
   const [query, setQuery] = useState("");
-  const filtered = STAFF_DIRECTORY.filter((s) => s.name.toLowerCase().includes(query.toLowerCase()) || s.role.toLowerCase().includes(query.toLowerCase()));
+  const filtered = REAL_STAFF.filter((s) => s.name.toLowerCase().includes(query.toLowerCase()) || s.role.toLowerCase().includes(query.toLowerCase()));
   return (
     <div>
-      <PageHeader title="Staff" sub={`${STAFF_DIRECTORY.length} team members`} action={<Button><Plus size={16} /> Add Staff Member</Button>} />
+      <PageHeader title="Staff" sub={`${REAL_STAFF.length} team members (dentists only — no staff/HR backend connected yet)`} action={<Button disabled title="Not yet connected to a staff backend"><Plus size={16} /> Add Staff Member</Button>} />
       <Card padded={false} className="overflow-hidden">
         <div className="p-4 border-b border-slate-700"><div className="max-w-sm"><SearchBox value={query} onChange={setQuery} placeholder="Search name or role" /></div></div>
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-sm uppercase text-slate-400 border-b border-slate-700"><th className="px-4 py-3 font-semibold">Employee</th><th className="font-semibold">Department</th><th className="font-semibold">Contact</th><th className="font-semibold">Joined</th><th className="font-semibold">Shift</th><th className="px-4 font-semibold">Status</th></tr></thead>
+          <thead><tr className="text-left text-sm uppercase text-slate-400 border-b border-slate-700"><th className="px-4 py-3 font-semibold">Employee</th><th className="font-semibold">Role</th><th className="font-semibold">Department</th><th className="px-4 font-semibold">Status</th></tr></thead>
           <tbody>{filtered.map((s) => (
             <tr key={s.id} className="border-b border-slate-800">
               <td className="px-4 py-3">
-                <div className="flex items-center gap-2.5"><Avatar name={s.name} size={30} /><div><div className="font-semibold text-slate-100">{s.name}</div><div className="text-xs text-slate-400 font-mono">{s.empId} · {s.role}</div></div></div>
+                <div className="flex items-center gap-2.5"><Avatar name={s.name} size={30} /><div className="font-semibold text-slate-100">{s.name}</div></div>
               </td>
+              <td className="text-slate-300">{s.role}</td>
               <td className="text-slate-300">{s.dept}</td>
-              <td className="text-slate-300"><div className="flex items-center gap-1"><Phone size={11} />{s.phone}</div></td>
-              <td className="text-slate-300">{fmtDate(s.joined)}</td>
-              <td className="text-slate-300">{s.shift}</td>
               <td className="px-4"><Badge label={s.status} color="#15803D" bg="#12351F" /></td>
             </tr>
           ))}</tbody>
@@ -2143,10 +1849,8 @@ function AttendancePage({ staffLog, setStaffLog, date, setDate }) {
   const dayLog = staffLog[date] || {};
   function clockIn(id) {
     const now = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-    const employee = STAFF_DIRECTORY.find((s) => s.id === id);
-    const shiftStart = employee?.shift?.split(" – ")[0] || "09:00 AM";
     const toMinutes = (value) => { const m = value.match(/(\d+):(\d+)\s*(AM|PM)/i); if (!m) return 0; let h = Number(m[1]) % 12; if (m[3].toUpperCase() === "PM") h += 12; return h * 60 + Number(m[2]); };
-    const isLate = toMinutes(now) > toMinutes(shiftStart) + 10;
+    const isLate = toMinutes(now) > toMinutes("09:00 AM") + 10;
     setStaffLog((prev) => ({ ...prev, [date]: { ...(prev[date] || {}), [id]: { status: isLate ? "late" : "present", in: now, out: prev[date]?.[id]?.out || null } } }));
   }
   function clockOut(id) {
@@ -2160,7 +1864,7 @@ function AttendancePage({ staffLog, setStaffLog, date, setDate }) {
       return { ...prev, [date]: day };
     });
   }
-  const counts = STAFF_DIRECTORY.reduce((acc, s) => {
+  const counts = REAL_STAFF.reduce((acc, s) => {
     const st = dayLog[s.id]?.status || "unmarked";
     acc[st] = (acc[st] || 0) + 1;
     return acc;
@@ -2179,7 +1883,7 @@ function AttendancePage({ staffLog, setStaffLog, date, setDate }) {
       <Card padded={false} className="overflow-hidden">
         <table className="w-full text-sm">
           <thead><tr className="text-left text-sm uppercase text-slate-400 border-b border-slate-700"><th className="px-4 py-3 font-semibold">Employee</th><th className="font-semibold">Login</th><th className="font-semibold">Logout</th><th className="font-semibold">Total Hours</th><th className="font-semibold">Status</th><th className="px-4 font-semibold">Actions</th></tr></thead>
-          <tbody>{STAFF_DIRECTORY.map((s) => {
+          <tbody>{REAL_STAFF.map((s) => {
             const rec = dayLog[s.id];
             return (
               <tr key={s.id} className="border-b border-slate-800">
@@ -2374,12 +2078,12 @@ function InventoryForm({ onSubmit }) {
    REPORTS
 ===================================================================== */
 
-function ReportsPage({ patients, appointments }) {
+function ReportsPage({ patients }) {
   const invoices = patients.flatMap((p) => p.invoices);
-  const byDentist = DOCTORS.map((d) => ({
-    name: d.name.replace("Dr. ", ""),
-    treatments: patients.reduce((a, p) => a + p.visits.filter((v) => v.dentist === d.name).length, 0),
-    revenue: invoices.filter((i) => i.dentist === d.name).reduce((a, i) => a + i.paidAmt, 0),
+  const byDentist = REAL_DOCTORS.map((name) => ({
+    name: name.replace("Dr. ", ""),
+    treatments: patients.reduce((a, p) => a + p.visits.filter((v) => v.dentist === name).length, 0),
+    revenue: invoices.filter((i) => i.dentist === name).reduce((a, i) => a + i.paidAmt, 0),
   }));
   const monthly = useMemo(() => {
     const months = Array.from({ length: 6 }, (_, i) => addDays(todayISO(), -30 * (5 - i)).slice(0, 7));
@@ -2556,31 +2260,29 @@ function LoginScreen({ onLogin }) {
 ===================================================================== */
 
 async function loadAll() {
-  const [localPatients, appointments, staffLog, inventory, notifications] = await Promise.all([
-    loadJSON("sdc:patients:v3", null),
-    loadJSON("sdc:appointments:v3", null),
+  const [staffLog, inventory, notifications] = await Promise.all([
     loadJSON("sdc:staffLog:v3", {}),
-    loadJSON("sdc:inventory:v3", null),
-    loadJSON("sdc:notifications:v3", null),
+    loadJSON("sdc:inventory:v3", []),
+    loadJSON("sdc:notifications:v3", []),
   ]);
 
-  let pts = null;
+  // Patients come strictly from the real backend (get-patients). No local
+  // fallback and no demo seed data — if the backend is unreachable the
+  // list stays empty and an error is shown, rather than showing fake
+  // patients.
+  let pts = [];
   let backendOnline = false;
+  let patientsError = "";
   try {
     const backendPatients = await fetchPatientsFromServer();
-    if (backendPatients && backendPatients.length) {
-      pts = backendPatients.map(normalizePatient);
-      backendOnline = true;
-    }
+    pts = (backendPatients || []).map(normalizePatient);
+    backendOnline = true;
   } catch (e) {
-    console.warn("get-patients webhook unavailable, using local data:", e.message);
+    patientsError = `Could not load patients from the server (get-patients): ${e.message}`;
+    console.warn(patientsError);
   }
-  if (!pts) pts = localPatients || attachHistories(seedPatients());
 
-  const appts = appointments || seedAppointments(pts);
-  const inv = inventory || seedInventory();
-  const notif = notifications || seedNotifications(appts);
-  return { patients: pts, appointments: appts, staffLog, inventory: inv, notifications: notif, backendOnline };
+  return { patients: pts, staffLog, inventory: inventory || [], notifications: notifications || [], backendOnline, patientsError };
 }
 
 const CURRENT_USER_KEY = "sdc:currentUser:v1";
@@ -2593,10 +2295,10 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [patients, setPatients] = useState([]);
-  const [appointments, setAppointments] = useState([]);
   const [staffLog, setStaffLog] = useState({});
   const [inventory, setInventory] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [patientsError, setPatientsError] = useState("");
 
   const [currentUser, setCurrentUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -2626,14 +2328,13 @@ function App() {
   useEffect(() => {
     (async () => {
       const d = await loadAll();
-      setPatients(d.patients); setAppointments(d.appointments); setStaffLog(d.staffLog);
+      setPatients(d.patients); setStaffLog(d.staffLog);
       setInventory(d.inventory); setNotifications(d.notifications);
+      setPatientsError(d.patientsError || "");
       setLoaded(true);
     })();
   }, []);
 
-  useEffect(() => { if (loaded) saveJSON("sdc:patients:v3", patients); }, [patients, loaded]);
-  useEffect(() => { if (loaded) saveJSON("sdc:appointments:v3", appointments); }, [appointments, loaded]);
   useEffect(() => { if (loaded) saveJSON("sdc:staffLog:v3", staffLog); }, [staffLog, loaded]);
   useEffect(() => { if (loaded) saveJSON("sdc:inventory:v3", inventory); }, [inventory, loaded]);
   useEffect(() => { if (loaded) saveJSON("sdc:notifications:v3", notifications); }, [notifications, loaded]);
@@ -2705,7 +2406,10 @@ function App() {
         </header>
 
         <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
-          {page === "dashboard" && <Dashboard patients={patients} appointments={appointments} invoices={patients.flatMap(p=>p.invoices)} staffLog={staffLog} leave={[]} inventory={inventory} setPage={setPage} currentUser={currentUser} />}
+          {patientsError && (
+            <div className="mb-4 rounded-lg border border-red-800 bg-red-950 px-3.5 py-2.5 text-sm text-red-300">{patientsError}</div>
+          )}
+          {page === "dashboard" && <Dashboard patients={patients} invoices={patients.flatMap(p=>p.invoices)} staffLog={staffLog} inventory={inventory} setPage={setPage} currentUser={currentUser} />}
           {page === "patients" && !selectedPatient && <PatientsPage patients={patients} setPatients={setPatients} openProfile={openProfile} />}
           {page === "patients" && selectedPatient && <PatientProfile patient={selectedPatient} updatePatient={updatePatient} back={() => setSelectedPatientId(null)} />}
           {page === "appointments" && <AppointmentsPage date={apptDate} setDate={setApptDate} currentUser={currentUser} />}
@@ -2714,7 +2418,7 @@ function App() {
           {page === "attendance" && <AttendancePage staffLog={staffLog} setStaffLog={setStaffLog} date={attDate} setDate={setAttDate} />}
           {page === "leave" && <LeavePage currentUser={currentUser} />}
           {page === "inventory" && <InventoryPage inventory={inventory} setInventory={setInventory} />}
-          {page === "reports" && <ReportsPage patients={patients} appointments={appointments} />}
+          {page === "reports" && <ReportsPage patients={patients} />}
           {page === "notifications" && <NotificationsPage notifications={notifications} setNotifications={setNotifications} />}
           {page === "settings" && <SettingsPage currentUser={currentUser} onLogout={handleLogout} />}
         </main>
