@@ -626,7 +626,7 @@ function Dashboard({ patients, appointments, invoices, staffLog, leave, inventor
           <div>
             <div className="text-teal-100 text-sm font-medium mb-1">{greeting} · {fmtDate(date)}</div>
             <h1 className="text-3xl font-bold text-white leading-tight">Sai Dental Clinic</h1>
-            <div className="text-teal-100 text-sm mt-1">Nungambakkam, Chennai · {todays.length} appointments scheduled today</div>
+            <div className="text-teal-100 text-sm mt-1">Yelahanka, Bengaluru · {todays.length} appointments scheduled today</div>
           </div>
           <div className="flex gap-2 flex-wrap">
             {quickActions.map((q) => (
@@ -2210,7 +2210,7 @@ function SettingsPage({ currentUser, onLogout }) {
           <div className="text-sm font-bold text-slate-100 mb-3">Clinic Profile</div>
           <div className="text-sm text-slate-300 flex flex-col gap-2">
             <div className="flex items-center gap-2"><Stethoscope size={14} className="text-teal-500" /> Sai Dental Clinic</div>
-            <div className="flex items-center gap-2"><MapPin size={14} className="text-teal-500" /> No. 14, Cross Street, Nungambakkam, Chennai 600034</div>
+            <div className="flex items-center gap-2"><MapPin size={14} className="text-teal-500" /> Yelahanka, Bengaluru</div>
             <div className="flex items-center gap-2"><Phone size={14} className="text-teal-500" /> 044-2833 5521</div>
             <div className="flex items-center gap-2"><Mail size={14} className="text-teal-500" /> frontdesk@saidental.clinic</div>
             <div className="flex items-center gap-2"><Clock size={14} className="text-teal-500" /> Open Mon–Sat, 9:00 AM – 7:00 PM</div>
@@ -2411,10 +2411,9 @@ function App() {
             <SearchBox value="" onChange={() => {}} placeholder="Search patients, appointments, invoices, staff…" />
           </div>
           <div className="flex items-center gap-3 ml-auto">
-            <select className="text-sm border border-slate-600 rounded-lg px-2.5 py-2 text-slate-300" defaultValue="main">
-              <option value="main">Sai Dental — Nungambakkam</option>
-              <option value="branch2">Sai Dental — Anna Nagar (Branch 2)</option>
-            </select>
+            <div className="hidden sm:flex items-center gap-1.5 text-sm text-slate-300 border border-slate-600 rounded-lg px-2.5 py-2">
+              <MapPin size={14} className="text-teal-500" /> Sai Dental — Yelahanka
+            </div>
             <button onClick={() => setPage("notifications")} className="relative p-2 rounded-lg hover:bg-slate-800">
               <Bell size={18} className="text-slate-300" />
               {unreadCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />}
