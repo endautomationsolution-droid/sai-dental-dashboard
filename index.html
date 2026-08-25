@@ -207,8 +207,10 @@ let state = {
   editing: null // {type, rowIndex} or null for new
 };
 
+const DEFAULT_WEBHOOK_URL = 'https://n8n.endat.co.in/webhook/uca-dashboard';
+
 function loadUrl(){
-  try { return localStorage.getItem('uca_webapp_url') || ''; } catch(e){ return ''; }
+  try { return localStorage.getItem('uca_webapp_url') || DEFAULT_WEBHOOK_URL; } catch(e){ return DEFAULT_WEBHOOK_URL; }
 }
 function saveUrl(u){
   try { localStorage.setItem('uca_webapp_url', u); } catch(e){}
