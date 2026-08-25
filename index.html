@@ -7,7 +7,7 @@
 <style>
   :root{
     --bg:#f5f6f8; --surface:#ffffff; --border:#e2e5ea; --text:#1a1d23; --text-dim:#6b7280;
-    --accent:#0f7a3d; --accent-dim:#e6f4ec; --danger:#c0362c; --danger-dim:#fbe9e7;
+    --accent:#1d4ed8; --accent-dim:#e8edfc; --danger:#c0362c; --danger-dim:#fbe9e7;
     --warn:#b5790a; --warn-dim:#fdf3e0; --radius:10px;
   }
   *{box-sizing:border-box;}
@@ -222,6 +222,16 @@ function setStatusLine(msg, isError){
   el.style.color = isError ? '#c0362c' : '';
 }
 
+function trimRowKeys(rows){
+  // Some sheet headers have accidental trailing spaces ("Phone ", "Name ")
+  // which would otherwise break exact field-name matching in the UI.
+  return rows.map(r => {
+    const out = {};
+    Object.keys(r).forEach(k => { out[k.trim()] = r[k]; });
+    return out;
+  });
+}
+
 async function apiPost(body){
   const res = await fetch(state.url, {
     method: 'POST',
@@ -251,9 +261,9 @@ async function refreshAll(){
     if(fees.error) throw new Error(fees.error);
     if(tournament.error) throw new Error(tournament.error);
     state.data = {
-      trial: { rows: trial.rows || [] },
-      fees: { rows: fees.rows || [] },
-      tournament: { rows: tournament.rows || [] }
+      trial: { rows: trimRowKeys(trial.rows || []) },
+      fees: { rows: trimRowKeys(fees.rows || []) },
+      tournament: { rows: trimRowKeys(tournament.rows || []) }
     };
     setStatusLine('Connected · updated ' + new Date().toLocaleTimeString());
   }catch(err){
