@@ -156,6 +156,7 @@ const SCHEMAS = {
     label: 'Trial Booking',
     fields: ['Timestamp','Phone','Name','Age','Batch','Timing','Trial Date'],
     display: ['Name','Phone','Age','Batch','Timing','Trial Date'],
+    labels: { Name:'Name', Phone:'Phone', Age:'Age', Batch:'Batch', Timing:'Timing', 'Trial Date':'Trial Date' },
     statusField: null,
     dateField: 'Trial Date'
   },
@@ -163,6 +164,7 @@ const SCHEMAS = {
     label: 'Fee Reminder',
     fields: ['customer_name','student_name','fee_amount','due_date','phone_number','sent_status'],
     display: ['customer_name','student_name','fee_amount','due_date','phone_number','sent_status'],
+    labels: { customer_name:'Parent Name', student_name:'Student Name', fee_amount:'Fee Amount', due_date:'Due Date', phone_number:'Phone Number', sent_status:'Status' },
     statusField: 'sent_status',
     dateField: 'due_date'
   },
@@ -170,6 +172,7 @@ const SCHEMAS = {
     label: 'Tournament Reminder',
     fields: ['customer_name','player_name','tournament_name','tournament_date','match_date','reporting_time','venu','tournament_fee','phone_number','sent_status'],
     display: ['customer_name','player_name','tournament_name','tournament_date','match_date','reporting_time','venu','tournament_fee','phone_number','sent_status'],
+    labels: { customer_name:'Parent Name', player_name:'Player Name', tournament_name:'Tournament', tournament_date:'Tournament Date', match_date:'Match Date', reporting_time:'Reporting Time', venu:'Venue', tournament_fee:'Fee', phone_number:'Phone Number', sent_status:'Status' },
     statusField: 'sent_status',
     dateField: 'tournament_date'
   }
@@ -326,7 +329,7 @@ function render(){
   }
 
   let html = '<table><thead><tr>';
-  schema.display.forEach(f => html += `<th>${f}</th>`);
+  schema.display.forEach(f => html += `<th>${(schema.labels && schema.labels[f]) || f}</th>`);
   html += '<th></th></tr></thead><tbody>';
 
   rows.forEach(row => {
@@ -383,7 +386,7 @@ function openEntryModal(type, row){
   const fieldsEl = document.getElementById('entryFields');
   fieldsEl.innerHTML = schema.fields.map(f => `
     <div class="field">
-      <label>${f}</label>
+      <label>${(schema.labels && schema.labels[f]) || f}</label>
       <input type="text" data-field="${f}" value="${row && row[f] !== undefined ? String(row[f]).replace(/"/g,'&quot;') : ''}">
     </div>
   `).join('');
