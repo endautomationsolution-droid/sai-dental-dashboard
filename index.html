@@ -12,12 +12,25 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
-  header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5;}
-  header h1{font-size:18px;margin:0;font-weight:700;}
-  header .sub{font-size:12px;color:var(--text-dim);margin-top:2px;}
-  .icon-btn{background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px;color:var(--text);}
-  .icon-btn:hover{background:var(--bg);}
+  header{background:linear-gradient(120deg,#1d4ed8 0%,#0891b2 55%,#0d9488 100%);border-bottom:1px solid var(--border);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5;box-shadow:0 2px 10px rgba(29,78,216,0.15);}
+  .header-left{display:flex;align-items:center;gap:14px;}
+  .logo-circle{width:46px;height:46px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#1d4ed8;flex-shrink:0;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.15);}
+  .logo-circle img{width:100%;height:100%;object-fit:cover;}
+  header h1{font-size:18px;margin:0;font-weight:700;color:#fff;}
+  header .sub{font-size:12px;color:rgba(255,255,255,0.85);margin-top:2px;}
+  .icon-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.35);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px;color:#fff;}
+  .icon-btn:hover{background:rgba(255,255,255,0.28);}
   main{max-width:1200px;margin:0 auto;padding:20px 24px 60px;}
+  .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;}
+  .stat-card{border-radius:12px;padding:16px 18px;color:#fff;position:relative;overflow:hidden;cursor:pointer;transition:transform .15s;}
+  .stat-card:hover{transform:translateY(-2px);}
+  .stat-card .stat-icon{font-size:20px;opacity:0.9;}
+  .stat-card .stat-num{font-size:28px;font-weight:800;margin-top:6px;line-height:1;}
+  .stat-card .stat-label{font-size:12px;font-weight:600;opacity:0.9;margin-top:4px;}
+  .stat-card.c-trial{background:linear-gradient(135deg,#1d4ed8,#3b82f6);}
+  .stat-card.c-fees{background:linear-gradient(135deg,#b5790a,#f59e0b);}
+  .stat-card.c-tournament{background:linear-gradient(135deg,#0d9488,#10b981);}
+  .stat-card.active-stat{outline:3px solid rgba(0,0,0,0.15);}
   .tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);}
   .tab{padding:10px 16px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text-dim);border-bottom:2px solid transparent;}
   .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
@@ -91,9 +104,12 @@
 </div>
 
 <header>
-  <div>
-    <h1>UCA Cricket Academy — Reminders Dashboard</h1>
-    <div class="sub" id="statusLine">Not connected</div>
+  <div class="header-left">
+    <div class="logo-circle" id="logoCircle">UCA</div>
+    <div>
+      <h1>Ultimate / Pingle Cricket Academy — Reminders Dashboard</h1>
+      <div class="sub" id="statusLine">Not connected</div>
+    </div>
   </div>
   <div style="display:flex;gap:8px;">
     <button class="icon-btn" id="lockOutBtn">🔒 Lock</button>
@@ -104,6 +120,24 @@
 <main>
   <div class="banner" id="setupBanner" style="display:none;">
     Connect your Google Sheet to get started. Click <b>Settings</b> above and paste in your Apps Script Web App URL.
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-card c-trial" data-tab="trial">
+      <div class="stat-icon">🏏</div>
+      <div class="stat-num" id="stat-trial">–</div>
+      <div class="stat-label">Trial Bookings</div>
+    </div>
+    <div class="stat-card c-fees" data-tab="fees">
+      <div class="stat-icon">💰</div>
+      <div class="stat-num" id="stat-fees">–</div>
+      <div class="stat-label">Fee Reminders</div>
+    </div>
+    <div class="stat-card c-tournament" data-tab="tournament">
+      <div class="stat-icon">🏆</div>
+      <div class="stat-num" id="stat-tournament">–</div>
+      <div class="stat-label">Tournament Reminders</div>
+    </div>
   </div>
 
   <div class="tabs">
@@ -369,7 +403,12 @@ function render(){
     t.classList.toggle('active', t.dataset.tab === state.activeTab);
   });
   ['trial','fees','tournament'].forEach(t => {
-    document.getElementById('count-' + t).textContent = (state.data[t]?.rows || []).length;
+    const n = (state.data[t]?.rows || []).length;
+    document.getElementById('count-' + t).textContent = n;
+    document.getElementById('stat-' + t).textContent = n;
+  });
+  document.querySelectorAll('.stat-card').forEach(card => {
+    card.classList.toggle('active-stat', card.dataset.tab === state.activeTab);
   });
 
   const schema = SCHEMAS[state.activeTab];
@@ -486,6 +525,9 @@ async function saveEntry(){
 // Event wiring
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => { state.activeTab = t.dataset.tab; render(); });
+});
+document.querySelectorAll('.stat-card').forEach(c => {
+  c.addEventListener('click', () => { state.activeTab = c.dataset.tab; render(); });
 });
 document.getElementById('searchBox').addEventListener('input', (e) => {
   state.search = e.target.value; render();
