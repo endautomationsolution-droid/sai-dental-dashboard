@@ -383,17 +383,9 @@ function applyStatusLine(){
     el.textContent = lastStatus.msg;
     el.style.color = lastStatus.isError ? '#c0362c' : '';
   } else {
-    // Coach / Assistant Coach: no webhook URL or detailed error text, just a simple state.
-    if(!state.url){
-      el.textContent = 'Not connected';
-      el.style.color = '';
-    } else if(lastStatus.isError){
-      el.textContent = 'Connection issue — please contact the admin';
-      el.style.color = '#c0362c';
-    } else {
-      el.textContent = 'Connected';
-      el.style.color = '';
-    }
+    // Coach / Assistant Coach: never show connection/webhook details or errors, even if something is wrong.
+    el.textContent = '';
+    el.style.color = '';
   }
 }
 
