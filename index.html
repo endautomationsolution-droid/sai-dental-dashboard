@@ -89,6 +89,33 @@
   .picker-item .meta{color:var(--text-dim);font-size:11px;}
   .chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-dim);color:var(--accent);border-radius:999px;padding:4px 6px 4px 12px;font-size:12px;font-weight:600;}
   .chip button{background:none;border:none;color:var(--accent);cursor:pointer;font-size:14px;line-height:1;padding:2px;}
+  .table-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius);}
+  .table-scroll table{border-radius:0;}
+
+  /* ---------- Mobile responsiveness ---------- */
+  @media (max-width: 720px){
+    header{flex-wrap:wrap;gap:10px;padding:14px 16px;}
+    header h1{font-size:15px;}
+    .header-left{gap:10px;}
+    .logo-circle{height:38px;}
+    main{padding:14px 12px 40px;}
+    .stat-row{grid-template-columns:repeat(2,1fr);gap:8px;}
+    .stat-card{padding:12px 14px;}
+    .stat-card .stat-num{font-size:22px;}
+    .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;}
+    .tab{white-space:nowrap;padding:8px 10px;font-size:13px;}
+    .toolbar{flex-direction:column;align-items:stretch;}
+    .toolbar input[type=search]{width:100%;}
+    .toolbar .date-field{justify-content:space-between;}
+    .toolbar button, .toolbar .btn{width:100%;}
+    .modal{padding:18px;max-width:100%;width:calc(100% - 20px);}
+    .modal-actions{flex-direction:column-reverse;}
+    .modal-actions .btn{width:100%;}
+    .player-row .row-bottom{flex-direction:column;}
+    .row-actions{flex-wrap:wrap;}
+    thead th, tbody td{padding:8px;font-size:12px;}
+    .lock-card{padding:24px 20px;max-width:calc(100% - 30px);}
+  }
 </style>
 </head>
 <body>
@@ -432,7 +459,7 @@ function render(){
     return;
   }
 
-  let html = '<table><thead><tr>';
+  let html = '<div class="table-scroll"><table><thead><tr>';
   schema.display.forEach(f => html += `<th>${(schema.labels && schema.labels[f]) || f}</th>`);
   html += '<th></th></tr></thead><tbody>';
 
@@ -455,7 +482,7 @@ function render(){
     html += `<button data-act="delete" data-idx="${row.__rowIndex}">Delete</button>`;
     html += `</div></td></tr>`;
   });
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   wrap.innerHTML = html;
 
   wrap.querySelectorAll('button[data-act]').forEach(btn => {
