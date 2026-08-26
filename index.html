@@ -20,6 +20,8 @@
   header .sub{font-size:12px;color:rgba(255,255,255,0.85);margin-top:2px;}
   .icon-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.35);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px;color:#fff;}
   .icon-btn:hover{background:rgba(255,255,255,0.28);}
+  #roleBadge{font-weight:700;}
+  #roleBadge:empty{display:none;}
   main{max-width:1200px;margin:0 auto;padding:20px 24px 60px;}
   .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;}
   .stat-card{border-radius:12px;padding:16px 18px;color:#fff;position:relative;overflow:hidden;cursor:pointer;transition:transform .15s;}
@@ -138,9 +140,10 @@
       <div class="sub" id="statusLine">Not connected</div>
     </div>
   </div>
-  <div style="display:flex;gap:8px;">
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="icon-btn" id="roleBadge" style="cursor:default;"></span>
     <button class="icon-btn" id="lockOutBtn">🔒 Lock</button>
-    <button class="icon-btn" id="settingsBtn">⚙ Settings</button>
+    <button class="icon-btn" id="settingsBtn" style="display:none;">⚙ Settings</button>
   </div>
 </header>
 
@@ -203,8 +206,20 @@
       activate it, then paste its Production webhook URL here. The URL is saved only in this browser.
     </p>
     <div class="field" style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
-      <label>Change Password (leave blank to keep current)</label>
-      <input type="password" id="newPassword" placeholder="New password" autocomplete="off">
+      <label>Manage Logins</label>
+      <p class="hint" style="margin-bottom:10px;">There are three separate logins: Admin (full access, can see this webhook link and connection errors), Coach, and Assistant Coach (both can view/add/edit/delete entries, but cannot see this URL or detailed error messages). Leave a field blank to keep that login's current password unchanged.</p>
+    </div>
+    <div class="field">
+      <label>Admin Password</label>
+      <input type="password" id="newPasswordAdmin" placeholder="New admin password" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Coach Password</label>
+      <input type="password" id="newPasswordCoach" placeholder="New coach password" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Assistant Coach Password</label>
+      <input type="password" id="newPasswordAssistant" placeholder="New assistant coach password" autocomplete="off">
     </div>
     <div class="modal-actions">
       <button class="btn secondary" id="settingsCancel">Cancel</button>
@@ -354,10 +369,32 @@ function saveUrl(u){
   try { localStorage.setItem('uca_webapp_url', u); } catch(e){}
 }
 
+let lastStatus = { msg: 'Not connected', isError: false };
+
 function setStatusLine(msg, isError){
+  lastStatus = { msg, isError };
+  applyStatusLine();
+}
+
+function applyStatusLine(){
   const el = document.getElementById('statusLine');
-  el.textContent = msg;
-  el.style.color = isError ? '#c0362c' : '';
+  const role = getRole();
+  if(role === 'admin'){
+    el.textContent = lastStatus.msg;
+    el.style.color = lastStatus.isError ? '#c0362c' : '';
+  } else {
+    // Coach / Assistant Coach: no webhook URL or detailed error text, just a simple state.
+    if(!state.url){
+      el.textContent = 'Not connected';
+      el.style.color = '';
+    } else if(lastStatus.isError){
+      el.textContent = 'Connection issue — please contact the admin';
+      el.style.color = '#c0362c';
+    } else {
+      el.textContent = 'Connected';
+      el.style.color = '';
+    }
+  }
 }
 
 function trimRowKeys(rows){
@@ -799,7 +836,9 @@ document.getElementById('bulkSave').addEventListener('click', async () => {
 });
 
 document.getElementById('settingsBtn').addEventListener('click', () => {
+  if(getRole() !== 'admin') return; // safety guard; button is hidden for non-admins anyway
   document.getElementById('webAppUrl').value = state.url;
+  ['newPasswordAdmin','newPasswordCoach','newPasswordAssistant'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('settingsOverlay').style.display = 'flex';
 });
 document.getElementById('settingsCancel').addEventListener('click', () => {
@@ -809,10 +848,13 @@ document.getElementById('settingsSave').addEventListener('click', async () => {
   const u = document.getElementById('webAppUrl').value.trim();
   state.url = u;
   saveUrl(u);
-  const newPass = document.getElementById('newPassword').value;
-  if(newPass){
-    savePassHash(await sha256Hex(newPass));
-    document.getElementById('newPassword').value = '';
+  const passFields = { admin: 'newPasswordAdmin', coach: 'newPasswordCoach', assistant: 'newPasswordAssistant' };
+  for(const role of ROLES){
+    const val = document.getElementById(passFields[role]).value;
+    if(val){
+      savePassHash(role, await sha256Hex(val));
+      document.getElementById(passFields[role]).value = '';
+    }
   }
   document.getElementById('settingsOverlay').style.display = 'none';
   refreshAll();
@@ -822,17 +864,23 @@ document.getElementById('entryCancel').addEventListener('click', () => {
 });
 document.getElementById('entrySave').addEventListener('click', saveEntry);
 
-// ---------- Password lock ----------
+// ---------- Password lock (role-based: admin / coach / assistant) ----------
+const ROLES = ['admin', 'coach', 'assistant'];
+const ROLE_LABELS = { admin: 'Admin', coach: 'Coach', assistant: 'Assistant Coach' };
+
 async function sha256Hex(text){
   const enc = new TextEncoder().encode(text);
   const buf = await crypto.subtle.digest('SHA-256', enc);
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
 }
-function loadPassHash(){
-  try { return localStorage.getItem('uca_pass_hash') || ''; } catch(e){ return ''; }
+function loadPassHash(role){
+  try { return localStorage.getItem('uca_pass_hash_' + role) || ''; } catch(e){ return ''; }
 }
-function savePassHash(h){
-  try { localStorage.setItem('uca_pass_hash', h); } catch(e){}
+function savePassHash(role, h){
+  try { localStorage.setItem('uca_pass_hash_' + role, h); } catch(e){}
+}
+function anyPasswordSet(){
+  return ROLES.some(r => !!loadPassHash(r));
 }
 function isSessionUnlocked(){
   try { return sessionStorage.getItem('uca_unlocked') === '1'; } catch(e){ return false; }
@@ -840,13 +888,27 @@ function isSessionUnlocked(){
 function setSessionUnlocked(v){
   try { v ? sessionStorage.setItem('uca_unlocked','1') : sessionStorage.removeItem('uca_unlocked'); } catch(e){}
 }
+function getRole(){
+  try { return sessionStorage.getItem('uca_role') || ''; } catch(e){ return ''; }
+}
+function setRole(r){
+  try { r ? sessionStorage.setItem('uca_role', r) : sessionStorage.removeItem('uca_role'); } catch(e){}
+}
+
+function applyRoleUI(){
+  const role = getRole();
+  document.getElementById('settingsBtn').style.display = role === 'admin' ? 'inline-block' : 'none';
+  const badge = document.getElementById('roleBadge');
+  badge.textContent = role ? ROLE_LABELS[role] : '';
+  applyStatusLine();
+}
 
 function showLock(){
-  const hasPass = !!loadPassHash();
-  document.getElementById('lockTitle').textContent = hasPass ? 'Enter Password' : 'Set a Password';
-  document.getElementById('lockSub').textContent = hasPass
-    ? 'This dashboard is protected. Enter the password to continue.'
-    : 'No password is set yet. Choose one now to protect this dashboard.';
+  const hasAnyPass = anyPasswordSet();
+  document.getElementById('lockTitle').textContent = hasAnyPass ? 'Enter Password' : 'Set Admin Password';
+  document.getElementById('lockSub').textContent = hasAnyPass
+    ? 'This dashboard is protected. Enter your login password to continue.'
+    : 'No logins are set up yet. Choose a password now for the Admin login — you can add Coach and Assistant Coach logins later from Settings.';
   document.getElementById('lockError').textContent = '';
   document.getElementById('lockInput').value = '';
   document.getElementById('lockScreen').style.display = 'flex';
@@ -861,19 +923,26 @@ async function attemptUnlock(){
   const errEl = document.getElementById('lockError');
   if(!pass){ errEl.textContent = 'Please enter a password.'; return; }
 
-  const existing = loadPassHash();
-  if(!existing){
-    // first run: set the password
+  if(!anyPasswordSet()){
+    // first run: this password becomes the Admin login
     const hash = await sha256Hex(pass);
-    savePassHash(hash);
+    savePassHash('admin', hash);
+    setRole('admin');
     setSessionUnlocked(true);
     hideLock();
+    applyRoleUI();
     return;
   }
   const hash = await sha256Hex(pass);
-  if(hash === existing){
+  const matchedRole = ROLES.find(r => {
+    const stored = loadPassHash(r);
+    return stored && stored === hash;
+  });
+  if(matchedRole){
+    setRole(matchedRole);
     setSessionUnlocked(true);
     hideLock();
+    applyRoleUI();
   } else {
     errEl.textContent = 'Incorrect password. Try again.';
     document.getElementById('lockInput').value = '';
@@ -887,6 +956,8 @@ document.getElementById('lockInput').addEventListener('keydown', (e) => {
 });
 document.getElementById('lockOutBtn').addEventListener('click', () => {
   setSessionUnlocked(false);
+  setRole('');
+  applyRoleUI();
   showLock();
 });
 
@@ -896,6 +967,7 @@ if(isSessionUnlocked()){
 } else {
   showLock();
 }
+applyRoleUI();
 state.url = loadUrl();
 refreshAll();
 </script>
