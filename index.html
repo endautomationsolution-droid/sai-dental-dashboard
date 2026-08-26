@@ -376,8 +376,17 @@ async function apiPost(body){
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body)
   });
-  if(!res.ok) throw new Error('Request failed: ' + res.status);
-  return res.json();
+  const text = await res.text();
+  if(!text){
+    return { error: `Empty response from server (HTTP ${res.status}) for "${body.type}". Check the n8n node handles that sheet type.` };
+  }
+  try{
+    const data = JSON.parse(text);
+    if(!res.ok && !data.error) data.error = `Request failed: ${res.status}`;
+    return data;
+  }catch(e){
+    return { error: `Non-JSON response for "${body.type}": ${text.slice(0,120)}` };
+  }
 }
 
 async function refreshAll(){
@@ -389,26 +398,29 @@ async function refreshAll(){
   }
   document.getElementById('setupBanner').style.display = 'none';
   setStatusLine('Loading…');
-  try{
-    const [trial, fees, tournament, students] = await Promise.all([
-      apiPost({action:'list', type:'trial'}),
-      apiPost({action:'list', type:'fees'}),
-      apiPost({action:'list', type:'tournament'}),
-      apiPost({action:'list', type:'students'})
-    ]);
-    if(trial.error) throw new Error(trial.error);
-    if(fees.error) throw new Error(fees.error);
-    if(tournament.error) throw new Error(tournament.error);
-    if(students.error) throw new Error(students.error);
-    state.data = {
-      trial: { rows: trimRowKeys(trial.rows || []) },
-      fees: { rows: trimRowKeys(fees.rows || []) },
-      tournament: { rows: trimRowKeys(tournament.rows || []) },
-      students: { rows: trimRowKeys(students.rows || []) }
-    };
+
+  const types = ['trial', 'fees', 'tournament', 'students'];
+  const results = await Promise.all(
+    types.map(t => apiPost({action:'list', type:t}).catch(e => ({error: e.message})))
+  );
+
+  const errors = [];
+  types.forEach((t, i) => {
+    const r = results[i];
+    if(r.error){
+      errors.push(`${t}: ${r.error}`);
+      // keep whatever data we already had for this tab rather than wiping it
+    } else {
+      state.data[t] = { rows: trimRowKeys(r.rows || []) };
+    }
+  });
+
+  if(errors.length === 0){
     setStatusLine('Connected · updated ' + new Date().toLocaleTimeString());
-  }catch(err){
-    setStatusLine('Connection error: ' + err.message, true);
+  } else if(errors.length === types.length){
+    setStatusLine('Connection error: ' + errors[0], true);
+  } else {
+    setStatusLine('Partially connected · ' + errors.join(' | '), true);
   }
   render();
 }
