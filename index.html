@@ -171,6 +171,7 @@
     <div class="tab active" data-tab="trial">Trial Bookings <span class="count-badge" id="count-trial">–</span></div>
     <div class="tab" data-tab="fees">Fee Reminders <span class="count-badge" id="count-fees">–</span></div>
     <div class="tab" data-tab="tournament">Tournament Reminders <span class="count-badge" id="count-tournament">–</span></div>
+    <div class="tab" data-tab="students">Students <span class="count-badge" id="count-students">–</span></div>
   </div>
 
   <div class="toolbar">
@@ -301,6 +302,14 @@ const SCHEMAS = {
     labels: { customer_name:'Parent Name', player_name:'Player Name', tournament_name:'Tournament', tournament_date:'Tournament Date', match_date:'Match Date', reporting_time:'Reporting Time', venu:'Venue', tournament_fee:'Fee', phone_number:'Phone Number' },
     statusField: null,
     dateField: 'tournament_date'
+  },
+  students: {
+    label: 'Student',
+    fields: ['customer_name','student_name','phone_number','batch','age'],
+    display: ['customer_name','student_name','phone_number','batch','age'],
+    labels: { customer_name:'Parent Name', student_name:'Student Name', phone_number:'Phone Number', batch:'Batch', age:'Age' },
+    statusField: null,
+    dateField: null
   }
 };
 
@@ -330,7 +339,7 @@ function parseToISODate(raw){
 let state = {
   url: '',
   activeTab: 'trial',
-  data: { trial: {headers:[],rows:[]}, fees: {headers:[],rows:[]}, tournament: {headers:[],rows:[]} },
+  data: { trial: {headers:[],rows:[]}, fees: {headers:[],rows:[]}, tournament: {headers:[],rows:[]}, students: {headers:[],rows:[]} },
   search: '',
   dateCheck: '',
   editing: null // {type, rowIndex} or null for new
@@ -381,18 +390,21 @@ async function refreshAll(){
   document.getElementById('setupBanner').style.display = 'none';
   setStatusLine('Loading…');
   try{
-    const [trial, fees, tournament] = await Promise.all([
+    const [trial, fees, tournament, students] = await Promise.all([
       apiPost({action:'list', type:'trial'}),
       apiPost({action:'list', type:'fees'}),
-      apiPost({action:'list', type:'tournament'})
+      apiPost({action:'list', type:'tournament'}),
+      apiPost({action:'list', type:'students'})
     ]);
     if(trial.error) throw new Error(trial.error);
     if(fees.error) throw new Error(fees.error);
     if(tournament.error) throw new Error(tournament.error);
+    if(students.error) throw new Error(students.error);
     state.data = {
       trial: { rows: trimRowKeys(trial.rows || []) },
       fees: { rows: trimRowKeys(fees.rows || []) },
-      tournament: { rows: trimRowKeys(tournament.rows || []) }
+      tournament: { rows: trimRowKeys(tournament.rows || []) },
+      students: { rows: trimRowKeys(students.rows || []) }
     };
     setStatusLine('Connected · updated ' + new Date().toLocaleTimeString());
   }catch(err){
@@ -429,10 +441,11 @@ function render(){
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t.dataset.tab === state.activeTab);
   });
-  ['trial','fees','tournament'].forEach(t => {
+  ['trial','fees','tournament','students'].forEach(t => {
     const n = (state.data[t]?.rows || []).length;
     document.getElementById('count-' + t).textContent = n;
-    document.getElementById('stat-' + t).textContent = n;
+    const statEl = document.getElementById('stat-' + t);
+    if(statEl) statEl.textContent = n;
   });
   document.querySelectorAll('.stat-card').forEach(card => {
     card.classList.toggle('active-stat', card.dataset.tab === state.activeTab);
@@ -580,17 +593,23 @@ document.getElementById('addBtn').addEventListener('click', () => {
 let bulkPlayerCount = 0;
 
 function getKnownContacts(){
-  // Pulls distinct people already in your sheets (Trial Bookings + Fee Reminders)
-  // so you can pick them instead of retyping.
+  // Pulls distinct people already in your sheets, preferring the Students
+  // master list, falling back to Trial/Fees/Tournament history for anyone
+  // not yet added to Students.
   const seen = new Map();
+  (state.data.students?.rows || []).forEach(r => {
+    const phone = String(r['phone_number'] || '').trim();
+    if(!phone) return;
+    seen.set(phone, { parent: r['customer_name'] || '', player: r['student_name'] || '', phone });
+  });
   (state.data.trial?.rows || []).forEach(r => {
     const phone = String(r['Phone'] || '').trim();
-    if(!phone) return;
+    if(!phone || seen.has(phone)) return;
     seen.set(phone, { parent: r['Name'] || '', player: r['Name'] || '', phone });
   });
   (state.data.fees?.rows || []).forEach(r => {
     const phone = String(r['phone_number'] || '').trim();
-    if(!phone) return;
+    if(!phone || seen.has(phone)) return;
     seen.set(phone, { parent: r['customer_name'] || '', player: r['student_name'] || '', phone });
   });
   (state.data.tournament?.rows || []).forEach(r => {
